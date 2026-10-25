@@ -1,8 +1,10 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,6 +42,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,9 +52,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.bluetooth.HumanTypingSimulator
 import com.example.ui.CodeFlowViewModel
 import com.example.ui.components.BluetoothHostBar
 import com.example.ui.components.BluetoothKeyboardModal
@@ -93,6 +98,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen(viewModel: CodeFlowViewModel) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+
     val hidState by viewModel.hidState.collectAsState()
     val typingState by viewModel.typingState.collectAsState()
     val currentProject by viewModel.currentProject.collectAsState()
@@ -109,28 +117,51 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     val palettePreset by viewModel.palettePreset.collectAsState()
     val checkpoint by viewModel.checkpoint.collectAsState()
 
+    val currentBtName by viewModel.currentBtName.collectAsState()
+    val isBtNameSpoofed by viewModel.isBtNameSpoofed.collectAsState()
+    val keepScreenAwake by viewModel.keepScreenAwake.collectAsState()
+    val originalBtName = remember(isBtNameSpoofed, currentBtName) {
+        viewModel.bluetoothHidManager.getOriginalDeviceName()
+    }
+
     var showSettingsModal by remember { mutableStateOf(false) }
     var showGitHubImportModal by remember { mutableStateOf(false) }
     var showBluetoothModal by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Bluetooth Runtime Permission Request for Android 12+
+    // Keep screen awake during active typing if enabled
+    DisposableEffect(keepScreenAwake, typingState) {
+        val isActivelyTyping = typingState is HumanTypingSimulator.TypingState.Typing
+        if (keepScreenAwake && isActivelyTyping) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    // Bluetooth Runtime Permission Request for Android 12+ & Notification for Android 13+
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        viewModel.bluetoothHidManager.initBluetooth()
+        viewModel.bluetoothHidManager.initBluetooth(force = false)
     }
 
     LaunchedEffect(Unit) {
+        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            bluetoothPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_ADVERTISE,
-                    Manifest.permission.BLUETOOTH_SCAN
-                )
-            )
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (permissions.isNotEmpty()) {
+            bluetoothPermissionLauncher.launch(permissions.toTypedArray())
         }
     }
 
@@ -284,22 +315,25 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     // Bluetooth PC Keyboard Pairing Guide Modal
     if (showBluetoothModal) {
         val pairedHosts = remember(showBluetoothModal, hidState) { viewModel.bluetoothHidManager.getBondedHosts() }
-        val deviceName = remember(showBluetoothModal) { viewModel.bluetoothHidManager.getDeviceName() }
         BluetoothKeyboardModal(
             hidState = hidState,
-            deviceName = deviceName,
+            deviceName = currentBtName,
+            originalDeviceName = originalBtName,
+            isNameSpoofed = isBtNameSpoofed,
             bondedHosts = pairedHosts,
             onConnectToHost = { viewModel.bluetoothHidManager.connectToHost(it) },
             onDisconnectHost = { viewModel.bluetoothHidManager.disconnectHost() },
+            onSpoofName = { viewModel.spoofBluetoothName(it) },
+            onRestoreOriginalName = { viewModel.restoreOriginalBluetoothName() },
             onStartTypingIntoPc = { viewModel.startBluetoothTypingIntoPc() },
             onEmergencyHalt = { viewModel.bluetoothHidManager.emergencyReleaseAllKeys() },
             onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() },
-            onRetryBluetooth = { viewModel.bluetoothHidManager.initBluetooth() },
+            onRetryBluetooth = { viewModel.bluetoothHidManager.initBluetooth(force = true) },
             onDismiss = { showBluetoothModal = false }
         )
     }
 
-    // Comprehensive Settings Modal: Cadence, Themes & Appearance, Persistence Memory
+    // Comprehensive Settings Modal: Cadence, Themes & Appearance, Screen Awake, Bluetooth Spoofing, Persistence Memory
     if (showSettingsModal) {
         SettingsModal(
             cps = typingCps,
@@ -309,12 +343,19 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
             themeMode = themeMode,
             palettePreset = palettePreset,
             checkpoint = checkpoint,
+            keepScreenAwake = keepScreenAwake,
+            currentBtName = currentBtName,
+            originalBtName = originalBtName,
+            isBtNameSpoofed = isBtNameSpoofed,
             onCpsChange = { viewModel.updateTypingCadence(it, linePauseMs, humanJitter, startCountdownSec) },
             onLineEndPauseChange = { viewModel.updateTypingCadence(typingCps, it, humanJitter, startCountdownSec) },
             onToggleJitter = { viewModel.updateTypingCadence(typingCps, linePauseMs, !humanJitter, startCountdownSec) },
             onCountdownSecChange = { viewModel.updateTypingCadence(typingCps, linePauseMs, humanJitter, it) },
             onThemeModeChange = { viewModel.updateTheme(it, palettePreset) },
             onPalettePresetChange = { viewModel.updateTheme(themeMode, it) },
+            onToggleKeepScreenAwake = { viewModel.toggleKeepScreenAwake(it) },
+            onSpoofBtName = { viewModel.spoofBluetoothName(it) },
+            onRestoreBtName = { viewModel.restoreOriginalBluetoothName() },
             onClearCheckpoint = { viewModel.clearCheckpoint() },
             onResetDefaults = { viewModel.updateTypingCadence(28, 120L, true, 3) },
             onDismiss = { showSettingsModal = false }

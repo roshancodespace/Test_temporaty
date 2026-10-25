@@ -25,11 +25,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -46,7 +50,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +75,7 @@ import com.example.ui.theme.IdePrimary
 import com.example.ui.theme.IdeSurface
 import com.example.ui.theme.IdeSurfaceVariant
 import com.example.ui.theme.PalettePreset
+import com.example.ui.theme.StatusSuccess
 import com.example.ui.theme.StatusWarning
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
@@ -81,16 +91,24 @@ fun SettingsModal(
     themeMode: ThemeMode,
     palettePreset: PalettePreset,
     checkpoint: TypingCheckpoint?,
+    keepScreenAwake: Boolean = true,
+    currentBtName: String = "Android Device",
+    originalBtName: String = "Android Device",
+    isBtNameSpoofed: Boolean = false,
     onCpsChange: (Int) -> Unit,
     onLineEndPauseChange: (Long) -> Unit,
     onToggleJitter: () -> Unit,
     onCountdownSecChange: (Int) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onPalettePresetChange: (PalettePreset) -> Unit,
+    onToggleKeepScreenAwake: (Boolean) -> Unit = {},
+    onSpoofBtName: (String) -> Unit = {},
+    onRestoreBtName: () -> Unit = {},
     onClearCheckpoint: () -> Unit,
     onResetDefaults: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    var btNameInput by remember(currentBtName) { mutableStateOf(currentBtName) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -494,7 +512,169 @@ fun SettingsModal(
                     )
                 }
 
-                // ==================== SECTION 3: PERSISTENCE MEMORY ====================
+                // ==================== SECTION 3: SCREEN & BLUETOOTH IDENTITY ====================
+                Spacer(modifier = Modifier.height(18.dp))
+                HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.StayCurrentPortrait,
+                        contentDescription = null,
+                        tint = IdeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "SCREEN AWAKE & BLUETOOTH SPOOFING",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = IdeAccent
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Keep Screen Awake Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Keep Screen Awake During Typing",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = "Prevents screen timeout while streaming. (Background WakeLock also keeps typing alive when screen is off).",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                    Switch(
+                        checked = keepScreenAwake,
+                        onCheckedChange = { onToggleKeepScreenAwake(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = IdeAccent,
+                            checkedTrackColor = IdePrimary,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = IdeSurfaceVariant
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Bluetooth Name Spoofing Quick Control
+                Surface(
+                    color = IdeSurfaceVariant.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Keyboard,
+                                    contentDescription = null,
+                                    tint = IdeAccent,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Advertised Name: $currentBtName",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = TextPrimary
+                                )
+                            }
+                            if (isBtNameSpoofed) {
+                                Text(
+                                    text = "Spoofed",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = StatusSuccess,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = btNameInput,
+                                onValueChange = { btNameInput = it },
+                                label = { Text("Spoof Keyboard Name", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(50.dp),
+                                textStyle = MaterialTheme.typography.bodySmall,
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = IdeSurface,
+                                    unfocusedContainerColor = IdeSurface,
+                                    focusedIndicatorColor = IdeAccent,
+                                    unfocusedIndicatorColor = IdeBorderSubtle
+                                )
+                            )
+                            Button(
+                                onClick = { onSpoofBtName(btNameInput) },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = IdeAccent,
+                                    contentColor = Color.Black
+                                ),
+                                enabled = btNameInput.isNotBlank() && btNameInput.trim() != currentBtName,
+                                modifier = Modifier.height(46.dp)
+                            ) {
+                                Text("Spoof", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+
+                        if (isBtNameSpoofed || originalBtName != currentBtName) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        onRestoreBtName()
+                                        btNameInput = originalBtName
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Undo,
+                                        contentDescription = null,
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Restore '$originalBtName'",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ==================== SECTION 4: PERSISTENCE MEMORY ====================
                 Spacer(modifier = Modifier.height(18.dp))
                 HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(16.dp))
