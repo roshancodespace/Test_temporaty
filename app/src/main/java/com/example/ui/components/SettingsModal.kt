@@ -1,6 +1,8 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,11 +15,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,13 +41,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44,15 +58,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.storage.TypingCheckpoint
 import com.example.ui.theme.IdeAccent
 import com.example.ui.theme.IdeBorder
 import com.example.ui.theme.IdeBorderSubtle
 import com.example.ui.theme.IdePrimary
 import com.example.ui.theme.IdeSurface
 import com.example.ui.theme.IdeSurfaceVariant
+import com.example.ui.theme.PalettePreset
+import com.example.ui.theme.StatusWarning
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.ThemeMode
 
 @Composable
 fun SettingsModal(
@@ -60,10 +78,16 @@ fun SettingsModal(
     lineEndPauseMs: Long,
     randomJitter: Boolean,
     countdownSec: Int,
+    themeMode: ThemeMode,
+    palettePreset: PalettePreset,
+    checkpoint: TypingCheckpoint?,
     onCpsChange: (Int) -> Unit,
     onLineEndPauseChange: (Long) -> Unit,
     onToggleJitter: () -> Unit,
     onCountdownSecChange: (Int) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onPalettePresetChange: (PalettePreset) -> Unit,
+    onClearCheckpoint: () -> Unit,
     onResetDefaults: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -73,10 +97,10 @@ fun SettingsModal(
     ) {
         Card(
             modifier = Modifier
-                .widthIn(min = 320.dp, max = 500.dp)
+                .widthIn(min = 320.dp, max = 520.dp)
                 .fillMaxWidth(0.92f)
                 .testTag("settings_modal"),
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = IdeSurface)
         ) {
             Column(
@@ -84,7 +108,7 @@ fun SettingsModal(
                     .padding(20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Unified Clean Header
+                // Modal Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -97,7 +121,7 @@ fun SettingsModal(
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(IdeSurfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
@@ -105,18 +129,18 @@ fun SettingsModal(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = null,
                                 tint = IdeAccent,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Keystroke & Cadence",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                text = "Settings & Preferences",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Fine-tune humanized PC typing rhythm",
+                                text = "Theme, Cadence & Memory Checkpoints",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
@@ -140,7 +164,173 @@ fun SettingsModal(
                 HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Setting 1: Typing Speed (CPS)
+                // ==================== SECTION 1: THEME SETTINGS ====================
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        tint = IdeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "THEME & APPEARANCE",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = IdeAccent
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Theme Mode Selector (System / Dark / Light)
+                Text(
+                    text = "Theme Mode",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val modes = listOf(
+                        Triple(ThemeMode.SYSTEM, "System", Icons.Default.BrightnessMedium),
+                        Triple(ThemeMode.DARK, "Dark", Icons.Default.DarkMode),
+                        Triple(ThemeMode.LIGHT, "Light", Icons.Default.LightMode)
+                    )
+
+                    modes.forEach { (mode, label, icon) ->
+                        val isSelected = themeMode == mode
+                        Surface(
+                            onClick = { onThemeModeChange(mode) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) IdePrimary.copy(alpha = 0.2f) else IdeSurfaceVariant,
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = if (isSelected) 1.5.dp else 0.5.dp,
+                                color = if (isSelected) IdeAccent else IdeBorderSubtle
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) IdeAccent else TextSecondary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isSelected) TextPrimary else TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Accent / Palette Preset Selector
+                Text(
+                    text = "IDE Style & Accent Palette",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val palettes = listOf(
+                        Triple(PalettePreset.VS_CODE, "VS Code Classic", Color(0xFF00E5FF)),
+                        Triple(PalettePreset.GITHUB, "GitHub Modern", Color(0xFF0969DA)),
+                        Triple(PalettePreset.MIDNIGHT, "Midnight Studio", Color(0xFFB388FF)),
+                        Triple(PalettePreset.MONOKAI, "Monokai Ember", Color(0xFFFFD54F))
+                    )
+
+                    palettes.forEach { (preset, label, accentColor) ->
+                        val isSelected = palettePreset == preset
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) IdeSurfaceVariant else Color.Transparent)
+                                .border(
+                                    width = if (isSelected) 1.dp else 0.5.dp,
+                                    color = if (isSelected) accentColor else IdeBorderSubtle,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { onPalettePresetChange(preset) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clip(CircleShape)
+                                        .background(accentColor)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    ),
+                                    color = TextPrimary
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = accentColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+                HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ==================== SECTION 2: CADENCE SETTINGS ====================
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = IdeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "KEYSTROKE CADENCE & RHYTHM",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = IdeAccent
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Typing Speed (CPS)
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -154,14 +344,14 @@ fun SettingsModal(
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Characters transmitted per second",
+                                text = "Characters per second transmitted to PC",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                         }
-                        val wpmEstimate = (cps * 60 / 5)
+                        val wpm = (cps * 60 / 5)
                         Text(
-                            text = "$cps cps (~$wpmEstimate wpm)",
+                            text = "$cps cps (~$wpm wpm)",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold
@@ -183,9 +373,9 @@ fun SettingsModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Setting 2: Line-End Pause
+                // Line-End Pause
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -199,7 +389,7 @@ fun SettingsModal(
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Natural pause on newlines (\\n)",
+                                text = "Pause after newlines (\\n)",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -227,9 +417,9 @@ fun SettingsModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Setting 3: Initial Focus Countdown
+                // Focus Countdown
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -243,7 +433,7 @@ fun SettingsModal(
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Delay to click into VS Code editor window",
+                                text = "Delay to focus VS Code window on PC",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
@@ -272,9 +462,9 @@ fun SettingsModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Setting 4: Natural Jitter Toggle
+                // Natural Jitter
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -287,7 +477,7 @@ fun SettingsModal(
                             color = TextPrimary
                         )
                         Text(
-                            text = "Gaussian micro-timing variance between keystrokes",
+                            text = "Gaussian micro-timing variance between keys",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
@@ -304,7 +494,83 @@ fun SettingsModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                // ==================== SECTION 3: PERSISTENCE MEMORY ====================
+                Spacer(modifier = Modifier.height(18.dp))
+                HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = null,
+                        tint = IdeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "PERSISTENCE & CHECKPOINT MEMORY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = IdeAccent
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (checkpoint != null) {
+                    Surface(
+                        color = IdeSurfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Saved Checkpoint Active",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = StatusWarning
+                                )
+                                TextButton(
+                                    onClick = onClearCheckpoint,
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Clear",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Clear Checkpoint", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                }
+                            }
+                            Text(
+                                text = "File: ${checkpoint.fileRelativePath} (char ${checkpoint.charOffset})",
+                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "${checkpoint.charsTyped}/${checkpoint.totalChars} characters transmitted so far.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "No saved checkpoint. Typing starts fresh from file 1. When paused or stopped in the middle, your position is automatically remembered here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
                 HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -315,10 +581,10 @@ fun SettingsModal(
                 ) {
                     OutlinedButton(
                         onClick = onResetDefaults,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
                         modifier = Modifier
-                            .weight(1.3f)
+                            .weight(1.2f)
                             .height(42.dp)
                     ) {
                         Icon(
@@ -332,7 +598,7 @@ fun SettingsModal(
 
                     Button(
                         onClick = onDismiss,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = IdePrimary,
                             contentColor = TextPrimary

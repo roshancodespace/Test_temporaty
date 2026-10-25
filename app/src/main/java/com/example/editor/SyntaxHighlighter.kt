@@ -13,7 +13,7 @@ import com.example.ui.theme.SyntaxNumber
 import com.example.ui.theme.SyntaxPunctuation
 import com.example.ui.theme.SyntaxString
 import com.example.ui.theme.SyntaxType
-import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.DefaultTextPrimary
 import java.util.regex.Pattern
 
 object SyntaxHighlighter {
@@ -58,7 +58,7 @@ object SyntaxHighlighter {
     private fun highlightKotlin(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
 
             // Multi-line and Single-line comments
             highlightPattern(code, "/\\*[\\s\\S]*?\\*/", SpanStyle(color = SyntaxComment))
@@ -99,7 +99,7 @@ object SyntaxHighlighter {
     private fun highlightPython(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
 
             // Comments
             highlightPattern(code, "#[^\n]*", SpanStyle(color = SyntaxComment))
@@ -135,7 +135,7 @@ object SyntaxHighlighter {
     private fun highlightJson(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
 
             // Keys
             highlightPattern(code, "\"[^\"]+\"\\s*(?=:)", SpanStyle(color = SyntaxIdentifier))
@@ -151,7 +151,7 @@ object SyntaxHighlighter {
     private fun highlightXml(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
 
             // XML comments
             highlightPattern(code, "<!--[\\s\\S]*?-->", SpanStyle(color = SyntaxComment))
@@ -171,7 +171,7 @@ object SyntaxHighlighter {
     private fun highlightMarkdown(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
 
             // Headings
             highlightPattern(code, "^#{1,6}\\s+[^\n]*", SpanStyle(color = SyntaxKeyword, fontWeight = FontWeight.Bold))
@@ -190,7 +190,7 @@ object SyntaxHighlighter {
     private fun highlightGeneric(code: String): AnnotatedString {
         return buildAnnotatedString {
             append(code)
-            addStyle(SpanStyle(color = TextPrimary), 0, code.length)
+            addStyle(SpanStyle(color = DefaultTextPrimary), 0, code.length)
             highlightPattern(code, "//[^\n]*", SpanStyle(color = SyntaxComment))
             highlightPattern(code, "\"[^\"\n]*\"", SpanStyle(color = SyntaxString))
             highlightPattern(code, "\\b\\d+\\b", SpanStyle(color = SyntaxNumber))

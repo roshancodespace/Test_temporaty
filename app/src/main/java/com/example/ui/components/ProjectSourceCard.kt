@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
@@ -27,14 +26,13 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Source
-import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,11 +44,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.FileNode
 import com.example.data.model.Project
 import com.example.ui.theme.IdeAccent
@@ -86,26 +86,28 @@ fun ProjectSourceCard(
 
     val includedCount = remember(fileTree) { countIncluded(fileTree) }
 
-    // Clean un-containerized section with subtle surface background
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(IdeSurface.copy(alpha = 0.5f))
+            .clip(RoundedCornerShape(10.dp))
+            .background(IdeSurface.copy(alpha = 0.55f))
             .padding(14.dp)
             .testTag("project_source_card")
     ) {
-        // Header & Project Name
+        // Clean Header: Title gets max space + Minimalist icon action buttons on right (GitHub original icon & ZIP icon)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(IdeSurfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
@@ -120,42 +122,74 @@ fun ProjectSourceCard(
                 Column {
                     Text(
                         text = project?.name ?: "No Project Loaded",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        ),
                         color = TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "$includedCount file(s) marked for PC typing",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                         color = IdeAccent
                     )
                 }
             }
 
+            // Compact Icon Actions (GitHub icon, ZIP icon, and Reset) without verbose text taking space
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(
+                // GitHub Original Icon Button
+                IconButton(
                     onClick = onImportGitHubClick,
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = IdeAccent),
-                    modifier = Modifier.height(32.dp)
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(IdeSurfaceVariant)
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("GitHub", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_github),
+                        contentDescription = "Import GitHub Repository",
+                        tint = IdeAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                OutlinedButton(
+                // ZIP Archive Icon Button
+                IconButton(
                     onClick = onImportZipClick,
-                    shape = RoundedCornerShape(6.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                    modifier = Modifier.height(32.dp)
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(IdeSurfaceVariant)
                 ) {
-                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("ZIP", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_zip),
+                        contentDescription = "Import ZIP Archive",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Reset Sample Project Button
+                IconButton(
+                    onClick = onResetSample,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(IdeSurfaceVariant)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Reset to Sample Project",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(17.dp)
+                    )
                 }
             }
         }
@@ -164,14 +198,14 @@ fun ProjectSourceCard(
         HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Subheader: Quick toggle all & Reset
+        // Subheader: Quick Multi-Select Controls
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "FILES TO TYPE INTO PC:",
+                text = "FILES TO TYPE INTO PC",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.5.sp
@@ -179,27 +213,18 @@ fun ProjectSourceCard(
                 color = TextMuted
             )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    onClick = {
-                        allSelected = !allSelected
-                        onToggleAllFiles(allSelected)
-                    }
-                ) {
-                    Text(
-                        text = if (allSelected) "Deselect All" else "Select All",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = IdeAccent
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(2.dp))
-
-                TextButton(onClick = onResetSample) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp), tint = TextSecondary)
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("Sample App", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                }
+            TextButton(
+                onClick = {
+                    allSelected = !allSelected
+                    onToggleAllFiles(allSelected)
+                },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = if (allSelected) "Deselect All" else "Select All",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = IdeAccent
+                )
             }
         }
 
@@ -235,7 +260,7 @@ private fun FileSelectorItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(32.dp)
                 .clickable {
                     if (node.isDirectory) {
                         isExpanded = !isExpanded

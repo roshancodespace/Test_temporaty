@@ -9,11 +9,14 @@ import com.example.bluetooth.HumanTypingSimulator
 import com.example.data.model.FileNode
 import com.example.data.model.LogEntry
 import com.example.data.model.LogLevel
-import com.example.data.model.PlaybackSpeed
 import com.example.data.model.Project
 import com.example.data.storage.GitHubRepoDownloader
+import com.example.data.storage.ProjectPreferences
 import com.example.data.storage.SafeZipExtractor
 import com.example.data.storage.SampleProjectProvider
+import com.example.data.storage.TypingCheckpoint
+import com.example.ui.theme.PalettePreset
+import com.example.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +26,8 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class CodeFlowViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val preferences = ProjectPreferences(application)
 
     // Bluetooth HID Keyboard & Human Typing Simulator
     val bluetoothHidManager = BluetoothHidKeyboardManager(application, viewModelScope)
@@ -46,18 +51,38 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     private val _eventLogs = MutableStateFlow<List<LogEntry>>(emptyList())
     val eventLogs: StateFlow<List<LogEntry>> = _eventLogs.asStateFlow()
 
-    // Configurable Typing Cadence
-    val typingCps = MutableStateFlow(32)
-    val linePauseMs = MutableStateFlow(180L)
-    val humanJitter = MutableStateFlow(true)
-    val startCountdownSec = MutableStateFlow(3)
+    // Cadence Settings with persistent memory
+    private val cadenceData = preferences.getCadence()
+    val typingCps = MutableStateFlow(cadenceData.cps)
+    val linePauseMs = MutableStateFlow(cadenceData.linePauseMs)
+    val humanJitter = MutableStateFlow(cadenceData.jitter)
+    val startCountdownSec = MutableStateFlow(cadenceData.countdownSec)
+
+    // Theme Settings with persistent memory
+    private val _themeMode = MutableStateFlow(
+        runCatching { ThemeMode.valueOf(preferences.getThemeMode().uppercase()) }.getOrDefault(ThemeMode.SYSTEM)
+    )
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    private val _palettePreset = MutableStateFlow(
+        runCatching { PalettePreset.valueOf(preferences.getThemePalette().uppercase()) }.getOrDefault(PalettePreset.VS_CODE)
+    )
+    val palettePreset: StateFlow<PalettePreset> = _palettePreset.asStateFlow()
+
+    // Persistent Checkpoint Memory
+    private val _checkpoint = MutableStateFlow<TypingCheckpoint?>(preferences.getCheckpoint())
+    val checkpoint: StateFlow<TypingCheckpoint?> = _checkpoint.asStateFlow()
 
     private val safeZipExtractor = SafeZipExtractor()
     private val gitHubRepoDownloader = GitHubRepoDownloader(application)
 
     init {
+        humanTypingSimulator.charsPerSecond = typingCps.value
+        humanTypingSimulator.linePauseMs = linePauseMs.value
+        humanTypingSimulator.humanJitter = humanJitter.value
+
         addLog(LogEntry(level = LogLevel.INFO, message = "CodeFlow Studio Remote Controller initialized."))
-        loadDefaultSampleProject()
+        restoreOrLoadDefaultProject()
         observeBluetoothHostEvents()
     }
 
@@ -103,7 +128,6 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
 
     fun addLog(entry: LogEntry) {
         _eventLogs.update { current ->
-            // Keep recent 200 logs
             (listOf(entry) + current).take(200)
         }
     }
@@ -111,6 +135,48 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     fun clearLogs() {
         _eventLogs.value = emptyList()
         addLog(LogEntry(level = LogLevel.INFO, message = "Console logs cleared."))
+    }
+
+    private fun restoreOrLoadDefaultProject() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val saved = preferences.loadSavedProject()
+
+            if (saved != null && File(saved.rootPath).exists()) {
+                val tree = safeZipExtractor.buildFileTree(File(saved.rootPath))
+                // Apply saved inclusion states
+                fun applyInclusions(nodes: List<FileNode>): List<FileNode> {
+                    return nodes.map { node ->
+                        val isInc = if (node.isDirectory) {
+                            node.isIncluded
+                        } else {
+                            saved.includedFilePaths.contains(node.relativePath)
+                        }
+                        node.copy(
+                            isIncluded = isInc,
+                            children = applyInclusions(node.children)
+                        )
+                    }
+                }
+                val restoredTree = applyInclusions(tree)
+                val project = Project(
+                    id = saved.id,
+                    name = saved.name,
+                    rootPath = saved.rootPath,
+                    isBundledSample = saved.isBundledSample,
+                    totalFiles = restoredTree.size,
+                    includedFilesCount = saved.includedFilePaths.size
+                )
+                _currentProject.value = project
+                _fileTree.value = restoredTree
+                addLog(LogEntry(
+                    level = LogLevel.INFO,
+                    message = "Restored saved project from persistent memory: '${saved.name}' (${saved.includedFilePaths.size} files marked)."
+                ))
+            } else {
+                loadDefaultSampleProject()
+            }
+        }
     }
 
     private fun loadDefaultSampleProject() {
@@ -122,6 +188,8 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
             _currentProject.value = sample
             _fileTree.value = sampleFiles
 
+            persistProjectState(sample, sampleFiles)
+
             addLog(LogEntry(
                 level = LogLevel.INFO,
                 message = "Loaded bundled project: '${sample.name}' (${sampleFiles.size} files ready)."
@@ -129,15 +197,31 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private fun persistProjectState(project: Project, tree: List<FileNode>) {
+        val includedPaths = mutableSetOf<String>()
+        fun collect(nodes: List<FileNode>) {
+            for (node in nodes) {
+                if (!node.isDirectory && node.isIncluded) {
+                    includedPaths.add(node.relativePath)
+                }
+                if (node.isDirectory) collect(node.children)
+            }
+        }
+        collect(tree)
+        preferences.saveProject(
+            id = project.id,
+            name = project.name,
+            rootPath = project.rootPath,
+            isBundledSample = project.isBundledSample,
+            includedFiles = includedPaths
+        )
+    }
+
     fun toggleFileInclusion(fileId: String) {
         fun toggleRecursive(nodes: List<FileNode>): List<FileNode> {
             return nodes.map { node ->
                 if (node.id == fileId) {
                     val updated = !node.isIncluded
-                    addLog(LogEntry(
-                        level = LogLevel.INFO,
-                        message = "File '${node.name}' marked as ${if (updated) "INCLUDED" else "EXCLUDED"}."
-                    ))
                     node.copy(isIncluded = updated)
                 } else if (node.isDirectory) {
                     node.copy(children = toggleRecursive(node.children))
@@ -147,6 +231,7 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
             }
         }
         _fileTree.update { toggleRecursive(it) }
+        _currentProject.value?.let { persistProjectState(it, _fileTree.value) }
     }
 
     fun toggleAllFiles(includeAll: Boolean) {
@@ -160,6 +245,7 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
             }
         }
         _fileTree.update { updateRecursive(it) }
+        _currentProject.value?.let { persistProjectState(it, _fileTree.value) }
         addLog(LogEntry(
             level = LogLevel.INFO,
             message = if (includeAll) "Marked all files as INCLUDED." else "Deselected all files."
@@ -176,53 +262,121 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         humanTypingSimulator.linePauseMs = linePauseMs.value
         humanTypingSimulator.humanJitter = humanJitter.value
 
+        preferences.saveCadence(typingCps.value, linePauseMs.value, humanJitter.value, startCountdownSec.value)
+
         addLog(LogEntry(
             level = LogLevel.INFO,
-            message = "Typing settings updated: ${typingCps.value} cps, ${linePauseMs.value}ms line pause, countdown ${startCountdownSec.value}s."
+            message = "Cadence updated: ${typingCps.value} cps, ${linePauseMs.value}ms pause, countdown ${startCountdownSec.value}s."
         ))
     }
 
-    // Bluetooth Output typing into PC VS Code
-    fun startBluetoothTypingIntoPc() {
-        val project = _currentProject.value ?: return
-        val rootDir = File(project.rootPath)
+    fun updateTheme(mode: ThemeMode, palette: PalettePreset) {
+        _themeMode.value = mode
+        _palettePreset.value = palette
+        preferences.saveTheme(mode.name.lowercase(), palette.name.lowercase())
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = "Theme changed: ${mode.label} (${palette.label})"
+        ))
+    }
 
-        fun collectIncludedFiles(nodes: List<FileNode>, list: MutableList<HumanTypingSimulator.FilePayload>) {
+    fun clearCheckpoint() {
+        preferences.clearCheckpoint()
+        _checkpoint.value = null
+        humanTypingSimulator.clearActiveCheckpoint()
+        addLog(LogEntry(level = LogLevel.INFO, message = "Saved checkpoint cleared."))
+    }
+
+    private fun buildIncludedPayloads(): List<HumanTypingSimulator.FilePayload> {
+        val project = _currentProject.value ?: return emptyList()
+        val rootDir = File(project.rootPath)
+        val payloads = mutableListOf<HumanTypingSimulator.FilePayload>()
+
+        fun collect(nodes: List<FileNode>) {
             for (node in nodes) {
                 if (!node.isDirectory && node.isIncluded) {
                     val fileOnDisk = File(rootDir, node.relativePath)
                     val content = if (fileOnDisk.exists()) fileOnDisk.readText() else ""
                     if (content.isNotBlank()) {
-                        list.add(HumanTypingSimulator.FilePayload(node.relativePath, content))
+                        payloads.add(HumanTypingSimulator.FilePayload(node.relativePath, content))
                     }
                 } else if (node.isDirectory) {
-                    collectIncludedFiles(node.children, list)
+                    collect(node.children)
                 }
             }
         }
+        collect(_fileTree.value)
+        return payloads
+    }
 
-        val payloads = mutableListOf<HumanTypingSimulator.FilePayload>()
-        collectIncludedFiles(_fileTree.value, payloads)
-
+    fun startBluetoothTypingIntoPc() {
+        val payloads = buildIncludedPayloads()
         if (payloads.isEmpty()) {
             _importStatusMessage.value = "No files selected to type. Check included files."
             addLog(LogEntry(level = LogLevel.WARN, message = "Start failed: No files are marked as included."))
             return
         }
 
-        humanTypingSimulator.charsPerSecond = typingCps.value
-        humanTypingSimulator.linePauseMs = linePauseMs.value
-        humanTypingSimulator.humanJitter = humanJitter.value
+        clearCheckpoint()
 
         humanTypingSimulator.startTypingSequence(
             files = payloads,
             startDelayMs = (startCountdownSec.value * 1000).toLong(),
-            onLog = { addLog(it) }
+            resumeFileIndex = 0,
+            resumeCharOffset = 0,
+            resumeCharsTyped = 0,
+            onLog = { addLog(it) },
+            onCheckpointUpdated = { saveCheckpointState(it) }
         )
     }
 
+    fun resumeFromCheckpoint() {
+        val cp = _checkpoint.value
+        val payloads = buildIncludedPayloads()
+
+        if (cp == null || payloads.isEmpty()) {
+            startBluetoothTypingIntoPc()
+            return
+        }
+
+        // Find file index matching checkpoint
+        var targetFileIndex = cp.fileIndex
+        if (targetFileIndex >= payloads.size || payloads[targetFileIndex].relativePath != cp.fileRelativePath) {
+            val foundIdx = payloads.indexOfFirst { it.relativePath == cp.fileRelativePath }
+            if (foundIdx >= 0) targetFileIndex = foundIdx
+        }
+
+        humanTypingSimulator.startTypingSequence(
+            files = payloads,
+            startDelayMs = (startCountdownSec.value * 1000).toLong(),
+            resumeFileIndex = targetFileIndex,
+            resumeCharOffset = cp.charOffset,
+            resumeCharsTyped = cp.charsTyped,
+            onLog = { addLog(it) },
+            onCheckpointUpdated = { saveCheckpointState(it) }
+        )
+    }
+
+    private fun saveCheckpointState(cp: HumanTypingSimulator.ActiveCheckpoint) {
+        val projectName = _currentProject.value?.name ?: "Current Project"
+        val checkpoint = TypingCheckpoint(
+            projectName = projectName,
+            fileRelativePath = cp.relativePath,
+            fileIndex = cp.fileIndex,
+            charOffset = cp.charOffset,
+            charsTyped = cp.charsTyped,
+            totalChars = cp.totalChars,
+            timestamp = System.currentTimeMillis()
+        )
+        preferences.saveCheckpoint(checkpoint)
+        _checkpoint.value = checkpoint
+    }
+
     fun pauseBluetoothTyping() {
-        humanTypingSimulator.pause { addLog(it) }
+        humanTypingSimulator.pause(
+            onLog = { addLog(it) },
+            onCheckpointSaved = { saveCheckpointState(it) }
+        )
     }
 
     fun resumeBluetoothTyping() {
@@ -230,7 +384,10 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun stopBluetoothTyping() {
-        humanTypingSimulator.stop { addLog(it) }
+        humanTypingSimulator.stop(
+            onLog = { addLog(it) },
+            onCheckpointSaved = { saveCheckpointState(it) }
+        )
     }
 
     fun testSampleKeystroke() {
@@ -244,7 +401,6 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // ZIP Import via Storage Access Framework
     fun importProjectZip(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             _isImporting.value = true
@@ -287,10 +443,13 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 _currentProject.value = project
                 _fileTree.value = tree
 
+                persistProjectState(project, tree)
+                clearCheckpoint()
+
                 _importStatusMessage.value = "Imported ${result.totalFiles} files successfully!"
                 addLog(LogEntry(
                     level = LogLevel.SUCCESS,
-                    message = "ZIP imported successfully: '$projectName' (${result.totalFiles} files, ${result.totalBytes / 1024} KB)."
+                    message = "ZIP imported: '$projectName' (${result.totalFiles} files, ${result.totalBytes / 1024} KB saved to memory)."
                 ))
             } catch (e: Exception) {
                 _importStatusMessage.value = "Error: ${e.localizedMessage ?: "Unknown error"}"
@@ -301,7 +460,6 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // GitHub Repo Import
     fun importGitHubRepo(repoUrl: String, branch: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isImporting.value = true
@@ -321,10 +479,13 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 _currentProject.value = result.project
                 _fileTree.value = result.fileTree
 
+                persistProjectState(result.project, result.fileTree)
+                clearCheckpoint()
+
                 _importStatusMessage.value = "Successfully imported ${result.project.name}!"
                 addLog(LogEntry(
                     level = LogLevel.SUCCESS,
-                    message = "GitHub repository unpacked: '${result.project.name}' (${result.project.totalFiles} files ready for PC typing)."
+                    message = "GitHub repository unpacked & saved: '${result.project.name}' (${result.project.totalFiles} files ready)."
                 ))
             } catch (e: Exception) {
                 _importStatusMessage.value = "GitHub import failed: ${e.localizedMessage}"
@@ -340,7 +501,8 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun resetToSampleProject() {
-        humanTypingSimulator.stop { addLog(it) }
+        humanTypingSimulator.stop(onLog = { addLog(it) })
+        clearCheckpoint()
         loadDefaultSampleProject()
     }
 }

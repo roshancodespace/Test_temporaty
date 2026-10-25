@@ -10,7 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -52,7 +52,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.ui.CodeFlowViewModel
 import com.example.ui.components.BluetoothHostBar
 import com.example.ui.components.BluetoothKeyboardModal
@@ -78,7 +77,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            CodeFlowTheme {
+            val themeMode by viewModel.themeMode.collectAsState()
+            val palettePreset by viewModel.palettePreset.collectAsState()
+
+            CodeFlowTheme(
+                themeMode = themeMode,
+                palettePreset = palettePreset
+            ) {
                 MainScreen(viewModel = viewModel)
             }
         }
@@ -100,7 +105,11 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     val humanJitter by viewModel.humanJitter.collectAsState()
     val startCountdownSec by viewModel.startCountdownSec.collectAsState()
 
-    var showCadenceSettingsModal by remember { mutableStateOf(false) }
+    val themeMode by viewModel.themeMode.collectAsState()
+    val palettePreset by viewModel.palettePreset.collectAsState()
+    val checkpoint by viewModel.checkpoint.collectAsState()
+
+    var showSettingsModal by remember { mutableStateOf(false) }
     var showGitHubImportModal by remember { mutableStateOf(false) }
     var showBluetoothModal by remember { mutableStateOf(false) }
 
@@ -171,7 +180,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(IdeAccent.copy(alpha = 0.15f)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -197,18 +206,20 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                         }
                     }
 
-                    IconButton(
-                        onClick = { showCadenceSettingsModal = true },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("open_settings_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Settings",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { showSettingsModal = true },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("open_settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Settings",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
@@ -221,20 +232,22 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() }
                 )
 
-                // Section 2: Typing Control Card (Start, Progress, Cadence)
+                // Section 2: Typing Control Card (Start, Checkpoint Resume, Progress, Cadence)
                 TypingControlCard(
                     typingState = typingState,
                     speedCps = typingCps,
                     linePauseMs = linePauseMs,
                     jitterEnabled = humanJitter,
+                    checkpoint = checkpoint,
                     onStartTyping = { viewModel.startBluetoothTypingIntoPc() },
+                    onResumeFromCheckpoint = { viewModel.resumeFromCheckpoint() },
                     onPauseTyping = { viewModel.pauseBluetoothTyping() },
                     onResumeTyping = { viewModel.resumeBluetoothTyping() },
                     onStopTyping = { viewModel.stopBluetoothTyping() },
-                    onOpenCadenceSettings = { showCadenceSettingsModal = true }
+                    onOpenCadenceSettings = { showSettingsModal = true }
                 )
 
-                // Section 3: Project Source & File Selection Card
+                // Section 3: Project Source & File Selection Card (Android-friendly M3 layout)
                 ProjectSourceCard(
                     project = currentProject,
                     fileTree = fileTree,
@@ -269,7 +282,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     Surface(
                         color = IdeSurface,
                         border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorder),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
@@ -313,19 +326,25 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         )
     }
 
-    // Cadence & Typing Settings Modal
-    if (showCadenceSettingsModal) {
+    // Comprehensive Settings Modal: Cadence, Themes & Appearance, Persistence Memory
+    if (showSettingsModal) {
         SettingsModal(
             cps = typingCps,
             lineEndPauseMs = linePauseMs,
             randomJitter = humanJitter,
             countdownSec = startCountdownSec,
+            themeMode = themeMode,
+            palettePreset = palettePreset,
+            checkpoint = checkpoint,
             onCpsChange = { viewModel.updateTypingCadence(it, linePauseMs, humanJitter, startCountdownSec) },
             onLineEndPauseChange = { viewModel.updateTypingCadence(typingCps, it, humanJitter, startCountdownSec) },
             onToggleJitter = { viewModel.updateTypingCadence(typingCps, linePauseMs, !humanJitter, startCountdownSec) },
             onCountdownSecChange = { viewModel.updateTypingCadence(typingCps, linePauseMs, humanJitter, it) },
+            onThemeModeChange = { viewModel.updateTheme(it, palettePreset) },
+            onPalettePresetChange = { viewModel.updateTheme(themeMode, it) },
+            onClearCheckpoint = { viewModel.clearCheckpoint() },
             onResetDefaults = { viewModel.updateTypingCadence(28, 120L, true, 3) },
-            onDismiss = { showCadenceSettingsModal = false }
+            onDismiss = { showSettingsModal = false }
         )
     }
 }

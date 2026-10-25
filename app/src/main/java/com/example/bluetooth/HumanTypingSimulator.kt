@@ -34,17 +34,31 @@ class HumanTypingSimulator(
             val currentFile: String,
             val charsTyped: Int,
             val totalChars: Int,
-            val progress: Float
+            val progress: Float,
+            val fileIndex: Int,
+            val charOffset: Int
         ) : TypingState()
         data class Completed(val totalChars: Int, val durationMs: Long) : TypingState()
         data class Stopped(val reason: String) : TypingState()
     }
+
+    data class ActiveCheckpoint(
+        val fileIndex: Int,
+        val charOffset: Int,
+        val relativePath: String,
+        val charsTyped: Int,
+        val totalChars: Int
+    )
 
     private val _typingState = MutableStateFlow<TypingState>(TypingState.Idle)
     val typingState: StateFlow<TypingState> = _typingState.asStateFlow()
 
     private var typingJob: Job? = null
     private var isPaused = false
+
+    // Current checkpoint tracking
+    var currentCheckpoint: ActiveCheckpoint? = null
+        private set
 
     // Configuration
     var charsPerSecond: Int = 32
@@ -61,7 +75,11 @@ class HumanTypingSimulator(
     fun startTypingSequence(
         files: List<FilePayload>,
         startDelayMs: Long = 3000L,
-        onLog: (LogEntry) -> Unit = {}
+        resumeFileIndex: Int = 0,
+        resumeCharOffset: Int = 0,
+        resumeCharsTyped: Int = 0,
+        onLog: (LogEntry) -> Unit = {},
+        onCheckpointUpdated: ((ActiveCheckpoint) -> Unit)? = null
     ) {
         stop(onLog)
         if (files.isEmpty()) {
@@ -75,23 +93,31 @@ class HumanTypingSimulator(
 
         typingJob = scope.launch {
             val random = Random(randomSeed)
-            var totalTyped = 0
+            var totalTyped = resumeCharsTyped.coerceAtLeast(0)
             val startTime = System.currentTimeMillis()
 
-            onLog(LogEntry(
-                level = LogLevel.INFO,
-                message = "Initiating PC typing sequence for ${files.size} file(s) ($totalChars total chars)..."
-            ))
+            val isResuming = resumeFileIndex > 0 || resumeCharOffset > 0
+            if (isResuming) {
+                onLog(LogEntry(
+                    level = LogLevel.INFO,
+                    message = "Resuming PC typing sequence at file [${resumeFileIndex + 1}/${files.size}], char offset $resumeCharOffset ($totalTyped/$totalChars chars typed)..."
+                ))
+            } else {
+                onLog(LogEntry(
+                    level = LogLevel.INFO,
+                    message = "Initiating PC typing sequence for ${files.size} file(s) ($totalChars total chars)..."
+                ))
+            }
 
             // Countdown buffer to allow user to switch focus to PC VS Code
             val countdownSec = (startDelayMs / 1000).toInt().coerceAtLeast(1)
             for (countdown in countdownSec downTo 1) {
                 _typingState.value = TypingState.Typing(
                     currentFile = "Countdown: $countdown s (Focus VS Code on PC)...",
-                    charsTyped = 0,
+                    charsTyped = totalTyped,
                     totalChars = totalChars,
-                    progress = 0f,
-                    fileIndex = 0,
+                    progress = (totalTyped.toFloat() / totalChars).coerceIn(0f, 1f),
+                    fileIndex = resumeFileIndex + 1,
                     totalFiles = files.size,
                     line = 1,
                     col = 1
@@ -103,19 +129,34 @@ class HumanTypingSimulator(
                 delay(1000L)
             }
 
-            for (fileIdx in files.indices) {
+            val startIndex = resumeFileIndex.coerceIn(0, files.size - 1)
+
+            for (fileIdx in startIndex until files.size) {
                 if (!isActive) break
                 val file = files[fileIdx]
                 val content = file.content
+
+                // Determine start character for this file (if resuming in the middle of this file)
+                val charStart = if (fileIdx == startIndex) resumeCharOffset.coerceIn(0, content.length) else 0
+
+                // Calculate initial line & column
                 var line = 1
                 var col = 1
+                for (i in 0 until charStart) {
+                    if (content[i] == '\n') {
+                        line++
+                        col = 1
+                    } else {
+                        col++
+                    }
+                }
 
                 onLog(LogEntry(
                     level = LogLevel.SUCCESS,
-                    message = ">> Typing [${fileIdx + 1}/${files.size}]: ${file.relativePath} (${content.length} chars) at ~$charsPerSecond cps"
+                    message = ">> Typing [${fileIdx + 1}/${files.size}]: ${file.relativePath} (${content.length - charStart} remaining chars) at ~$charsPerSecond cps"
                 ))
 
-                for (charIdx in content.indices) {
+                for (charIdx in charStart until content.length) {
                     while (isPaused && isActive) {
                         delay(100L)
                     }
@@ -144,6 +185,16 @@ class HumanTypingSimulator(
                         col = col
                     )
 
+                    // Track checkpoint state
+                    val checkpoint = ActiveCheckpoint(
+                        fileIndex = fileIdx,
+                        charOffset = charIdx + 1,
+                        relativePath = file.relativePath,
+                        charsTyped = totalTyped,
+                        totalChars = totalChars
+                    )
+                    currentCheckpoint = checkpoint
+
                     // Humanized timing delays
                     val baseDelayMs = (1000.0 / charsPerSecond.coerceAtLeast(5)).coerceAtLeast(10.0)
                     val jitter = if (humanJitter) {
@@ -159,12 +210,13 @@ class HumanTypingSimulator(
                         delayTime += 40L
                     }
 
-                    // Periodic keystroke logging every ~100 chars
+                    // Periodic keystroke logging & checkpoint persistence
                     if (totalTyped % 80 == 0) {
                         onLog(LogEntry(
                             level = LogLevel.KEYSTROKE,
                             message = "${file.relativePath}: ${charIdx + 1}/${content.length} chars typed (Ln $line, Col $col)"
                         ))
+                        onCheckpointUpdated?.invoke(checkpoint)
                     }
 
                     delay(delayTime)
@@ -175,7 +227,7 @@ class HumanTypingSimulator(
                     message = "Completed ${file.relativePath} (${content.length} chars)."
                 ))
 
-                // Pause between files to allow user to switch or save tab in VS Code
+                // Pause between files
                 if (fileIdx < files.size - 1 && isActive) {
                     onLog(LogEntry(
                         level = LogLevel.INFO,
@@ -190,6 +242,7 @@ class HumanTypingSimulator(
                 val durationSec = (elapsed / 1000).coerceAtLeast(1)
                 val avgCps = totalTyped / durationSec
                 _typingState.value = TypingState.Completed(totalChars = totalTyped, durationMs = elapsed)
+                currentCheckpoint = null
                 onLog(LogEntry(
                     level = LogLevel.SUCCESS,
                     message = "SUCCESS: All ${files.size} file(s) typed into PC ($totalTyped chars in ${durationSec}s, avg $avgCps cps)."
@@ -198,17 +251,23 @@ class HumanTypingSimulator(
         }
     }
 
-    fun pause(onLog: (LogEntry) -> Unit = {}) {
+    fun pause(onLog: (LogEntry) -> Unit = {}, onCheckpointSaved: ((ActiveCheckpoint) -> Unit)? = null) {
         isPaused = true
         val current = _typingState.value
         if (current is TypingState.Typing) {
+            val cp = currentCheckpoint
             _typingState.value = TypingState.Paused(
                 currentFile = current.currentFile,
                 charsTyped = current.charsTyped,
                 totalChars = current.totalChars,
-                progress = current.progress
+                progress = current.progress,
+                fileIndex = cp?.fileIndex ?: (current.fileIndex - 1).coerceAtLeast(0),
+                charOffset = cp?.charOffset ?: 0
             )
-            onLog(LogEntry(level = LogLevel.WARN, message = "PC typing paused."))
+            if (cp != null) {
+                onCheckpointSaved?.invoke(cp)
+            }
+            onLog(LogEntry(level = LogLevel.WARN, message = "PC typing paused. Checkpoint stored."))
         }
     }
 
@@ -217,15 +276,23 @@ class HumanTypingSimulator(
         onLog(LogEntry(level = LogLevel.INFO, message = "PC typing resumed."))
     }
 
-    fun stop(onLog: (LogEntry) -> Unit = {}) {
+    fun stop(onLog: (LogEntry) -> Unit = {}, onCheckpointSaved: ((ActiveCheckpoint) -> Unit)? = null) {
         val wasActive = typingJob?.isActive == true
+        val cp = currentCheckpoint
+        if (wasActive && cp != null) {
+            onCheckpointSaved?.invoke(cp)
+        }
         typingJob?.cancel()
         typingJob = null
         isPaused = false
         keyboardManager.emergencyReleaseAllKeys()
         _typingState.value = TypingState.Idle
         if (wasActive) {
-            onLog(LogEntry(level = LogLevel.WARN, message = "PC typing halted. Emergency key release sent."))
+            onLog(LogEntry(level = LogLevel.WARN, message = "PC typing halted. Checkpoint saved to memory."))
         }
+    }
+
+    fun clearActiveCheckpoint() {
+        currentCheckpoint = null
     }
 }

@@ -1,0 +1,121 @@
+name: Build & Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v2.1.0 or "auto")'
+        required: true
+        default: 'auto'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve Version Tag
+        id: resolve_tag
+        run: |
+          git fetch --tags --force
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          
+          if [ "$INPUT_VERSION" = "auto" ] || [ -z "$INPUT_VERSION" ]; then
+            # Find latest existing tag
+            LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
+            if [ -z "$LATEST_TAG" ]; then
+              TARGET_TAG="v1.0.0"
+              echo "No tags found in repo. Defaulting to $TARGET_TAG"
+            else
+              TARGET_TAG="$LATEST_TAG"
+              echo "Auto-detected latest tag: $TARGET_TAG"
+            fi
+          else
+            TARGET_TAG="$INPUT_VERSION"
+            # Ensure format starts with 'v' if omitted
+            if [[ ! "$TARGET_TAG" =~ ^v ]]; then
+              TARGET_TAG="v$TARGET_TAG"
+            fi
+            echo "Target version tag requested: $TARGET_TAG"
+          fi
+
+          # Check if tag exists locally or remotely
+          if git rev-parse "$TARGET_TAG" >/dev/null 2>&1; then
+            echo "Tag $TARGET_TAG already exists."
+          else
+            echo "Tag $TARGET_TAG does not exist. Creating and pushing tag..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TARGET_TAG" -m "Release $TARGET_TAG"
+            git push origin "$TARGET_TAG"
+            echo "Tag $TARGET_TAG pushed successfully."
+          fi
+
+          echo "RELEASE_TAG=$TARGET_TAG" >> $GITHUB_ENV
+          echo "tag=$TARGET_TAG" >> $GITHUB_OUTPUT
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew (if present)
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+          fi
+
+      - name: Build Release APK
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            gradle assembleRelease --no-daemon
+          fi
+
+      - name: Verify and Locate APK
+        id: locate_apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "Error: Release APK not found!"
+            find app/build/outputs -type f
+            exit 1
+          fi
+          echo "Found APK at: $APK_PATH"
+          echo "APK_FILE=$APK_PATH" >> $GITHUB_ENV
+
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "CodeFlow Studio ${{ env.RELEASE_TAG }}"
+          body: |
+            ## CodeFlow Studio Release ${{ env.RELEASE_TAG }}
+            
+            Bluetooth PC Keystroke Remote Controller for VS Code.
+            
+            ### Artifacts
+            - **Release APK**: Included below.
+            
+            _Built deterministically via GitHub Actions dispatch._
+          files: ${{ env.APK_FILE }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

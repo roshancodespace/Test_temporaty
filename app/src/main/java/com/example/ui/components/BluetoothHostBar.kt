@@ -4,29 +4,28 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,35 +49,36 @@ fun BluetoothHostBar(
     onEnableSimulation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val (dotColor, statusTitle, statusSubtitle) = when (hidState) {
+    // Pure icon-driven status without verbose fluff
+    val (statusIcon, iconColor, statusLabel) = when (hidState) {
         is BluetoothHidKeyboardManager.HidState.Connected -> {
-            Triple(StatusSuccess, "CONNECTED TO PC", "${hidState.deviceName} (${hidState.deviceAddress})")
+            Triple(Icons.Default.BluetoothConnected, StatusSuccess, hidState.deviceName.ifBlank { "PC Connected" })
         }
         is BluetoothHidKeyboardManager.HidState.WaitingForHost -> {
-            Triple(IdeAccent, "READY TO PAIR", "Pair PC with 'CodeFlow Studio Keyboard'")
+            Triple(Icons.Default.BluetoothSearching, IdeAccent, "Ready to Pair")
         }
         is BluetoothHidKeyboardManager.HidState.BluetoothDisabled -> {
-            Triple(StatusWarning, "BLUETOOTH OFF", "Enable Bluetooth in device settings")
+            Triple(Icons.Default.BluetoothDisabled, StatusWarning, "Bluetooth Off")
         }
         is BluetoothHidKeyboardManager.HidState.SimulationMode -> {
-            Triple(IdeAccent, "PREVIEW MODE", hidState.reason)
+            Triple(Icons.Default.Bluetooth, IdeAccent, "Preview Mode")
         }
         is BluetoothHidKeyboardManager.HidState.Unsupported -> {
-            Triple(StatusWarning, "HARDWARE NOTICE", hidState.reason)
+            Triple(Icons.Default.BluetoothDisabled, StatusWarning, "Notice")
         }
         else -> {
-            Triple(TextSecondary, "INITIALIZING...", "Starting HID service")
+            Triple(Icons.Default.Bluetooth, TextMuted, "Initializing")
         }
     }
 
-    // Clean, borderless status header strip
+    // Clean, minimalist status strip
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(IdeSurface.copy(alpha = 0.5f))
             .clickable { onOpenPairingGuide() }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -88,55 +88,56 @@ fun BluetoothHostBar(
         ) {
             Box(
                 modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(dotColor)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = statusTitle,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = dotColor
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "•  $statusSubtitle",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextSecondary,
-                        maxLines = 1
-                    )
-                }
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(iconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = statusIcon,
+                    contentDescription = statusLabel,
+                    tint = iconColor,
+                    modifier = Modifier.size(17.dp)
+                )
             }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = statusLabel,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                ),
+                color = if (hidState is BluetoothHidKeyboardManager.HidState.Connected) TextPrimary else iconColor,
+                maxLines = 1
+            )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(
+            // Quick Test Key Icon Button
+            IconButton(
                 onClick = onTestKeystroke,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                modifier = Modifier.size(32.dp)
             ) {
-                Text(
-                    text = "Test Key",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = IdeAccent
+                Icon(
+                    imageVector = Icons.Default.VpnKey,
+                    contentDescription = "Test Keystroke",
+                    tint = IdeAccent,
+                    modifier = Modifier.size(16.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(2.dp))
 
+            // Emergency Key Release
             IconButton(
                 onClick = onEmergencyRelease,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Stop,
                     contentDescription = "Emergency Key Release",
                     tint = StatusError,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(17.dp)
                 )
             }
         }
