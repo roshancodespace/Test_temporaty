@@ -124,9 +124,23 @@ class HumanTypingSimulator(
                 )
                 onLog(LogEntry(
                     level = LogLevel.INFO,
-                    message = "Switch focus to PC VS Code! Starting in $countdown s..."
+                    message = "Switch focus to target editor! Starting in $countdown s..."
                 ))
                 delay(1000L)
+            }
+
+            // Ensure Bluetooth HID Keyboard channel is genuinely connected before typing (unless in Preview Mode)
+            val isSim = keyboardManager.hidState.value is BluetoothHidKeyboardManager.HidState.SimulationMode
+            if (!isSim) {
+                val hostDevice = keyboardManager.ensureHidConnected()
+                if (hostDevice == null) {
+                    _typingState.value = TypingState.Stopped("No Bluetooth HID host connected. Open the Bluetooth panel and tap 'Use PC' on your target device.")
+                    onLog(LogEntry(
+                        level = LogLevel.ERROR,
+                        message = "Typing aborted: Bluetooth HID channel is not connected to a target device. Tap the Bluetooth bar to connect your device or enable Preview Mode."
+                    ))
+                    return@launch
+                }
             }
 
             val startIndex = resumeFileIndex.coerceIn(0, files.size - 1)
@@ -163,7 +177,47 @@ class HumanTypingSimulator(
                     if (!isActive) break
 
                     val char = content[charIdx]
-                    keyboardManager.sendChar(char)
+                    var delivered = keyboardManager.sendChar(char)
+                    if (!delivered && !isSim) {
+                        // Attempt one quick HID reconnect
+                        val reconnected = keyboardManager.ensureHidConnected() != null
+                        if (reconnected) {
+                            delivered = keyboardManager.sendChar(char)
+                        }
+                    }
+
+                    if (!delivered && !isSim) {
+                        // Do not falsely advance progress if keystroke failed to deliver; auto-pause at exact character!
+                        val cp = ActiveCheckpoint(
+                            fileIndex = fileIdx,
+                            charOffset = charIdx,
+                            relativePath = file.relativePath,
+                            charsTyped = totalTyped,
+                            totalChars = totalChars
+                        )
+                        currentCheckpoint = cp
+                        isPaused = true
+                        _typingState.value = TypingState.Paused(
+                            currentFile = file.relativePath,
+                            charsTyped = totalTyped,
+                            totalChars = totalChars,
+                            progress = (totalTyped.toFloat() / totalChars).coerceIn(0f, 1f),
+                            fileIndex = fileIdx,
+                            charOffset = charIdx
+                        )
+                        onCheckpointUpdated?.invoke(cp)
+                        onLog(LogEntry(
+                            level = LogLevel.WARN,
+                            message = "Bluetooth HID link interrupted at ${file.relativePath} (char $charIdx). Auto-paused & saved checkpoint!"
+                        ))
+                        while (isPaused && isActive) {
+                            delay(100L)
+                        }
+                        if (!isActive) break
+                        // Retry sending this character after user resumes
+                        keyboardManager.sendChar(char)
+                    }
+
                     totalTyped++
 
                     if (char == '\n') {

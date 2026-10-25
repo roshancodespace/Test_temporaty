@@ -19,7 +19,9 @@ import com.example.data.storage.SampleProjectProvider
 import com.example.data.storage.TypingCheckpoint
 import com.example.ui.theme.PalettePreset
 import com.example.ui.theme.ThemeMode
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,12 +31,36 @@ import java.io.File
 
 class CodeFlowViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        private val processScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        @Volatile
+        private var sharedHidManager: BluetoothHidKeyboardManager? = null
+        @Volatile
+        private var sharedTypingSimulator: HumanTypingSimulator? = null
+
+        fun getHidManager(app: Application): BluetoothHidKeyboardManager {
+            return sharedHidManager ?: synchronized(this) {
+                sharedHidManager ?: BluetoothHidKeyboardManager(app.applicationContext, processScope).also {
+                    sharedHidManager = it
+                }
+            }
+        }
+
+        fun getTypingSimulator(app: Application): HumanTypingSimulator {
+            return sharedTypingSimulator ?: synchronized(this) {
+                sharedTypingSimulator ?: HumanTypingSimulator(getHidManager(app), processScope).also {
+                    sharedTypingSimulator = it
+                }
+            }
+        }
+    }
+
     private val preferences = ProjectPreferences(application)
 
-    // Bluetooth HID Keyboard & Human Typing Simulator
-    val bluetoothHidManager = BluetoothHidKeyboardManager(application, viewModelScope)
+    // Bluetooth HID Keyboard & Human Typing Simulator (Process-scoped so Recents/backgrounding never drops state)
+    val bluetoothHidManager = getHidManager(application)
     val hidState: StateFlow<BluetoothHidKeyboardManager.HidState> = bluetoothHidManager.hidState
-    val humanTypingSimulator = HumanTypingSimulator(bluetoothHidManager, viewModelScope)
+    val humanTypingSimulator = getTypingSimulator(application)
     val typingState: StateFlow<HumanTypingSimulator.TypingState> = humanTypingSimulator.typingState
 
     private val _currentProject = MutableStateFlow<Project?>(null)
@@ -484,7 +510,7 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun pauseBluetoothTyping() {
-        KeystrokeForegroundService.stop(getApplication())
+        KeystrokeForegroundService.updateStatus(getApplication(), "Paused — Bluetooth HID Keyboard Ready")
         humanTypingSimulator.pause(
             onLog = { addLog(it) },
             onCheckpointSaved = { saveCheckpointState(it) }
@@ -494,12 +520,12 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     fun resumeBluetoothTyping() {
         val current = humanTypingSimulator.typingState.value
         val fileName = if (current is HumanTypingSimulator.TypingState.Paused) current.currentFile else "code"
-        KeystrokeForegroundService.start(getApplication(), fileName)
+        KeystrokeForegroundService.updateStatus(getApplication(), "Typing $fileName...")
         humanTypingSimulator.resume { addLog(it) }
     }
 
     fun stopBluetoothTyping() {
-        KeystrokeForegroundService.stop(getApplication())
+        KeystrokeForegroundService.updateStatus(getApplication(), "Bluetooth HID Keyboard Active & Ready")
         humanTypingSimulator.stop(
             onLog = { addLog(it) },
             onCheckpointSaved = { saveCheckpointState(it) }
@@ -536,13 +562,28 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun testSampleKeystroke() {
-        viewModelScope.launch {
-            val testLine = "// CodeFlow Studio: Bluetooth HID Keyboard verified!\n"
-            addLog(LogEntry(level = LogLevel.INFO, message = "Sending quick test keystroke: '$testLine'"))
-            for (ch in testLine) {
-                bluetoothHidManager.sendChar(ch)
+        processScope.launch {
+            val isSim = bluetoothHidManager.hidState.value is BluetoothHidKeyboardManager.HidState.SimulationMode
+            if (!isSim && bluetoothHidManager.ensureHidConnected() == null) {
+                addLog(LogEntry(
+                    level = LogLevel.ERROR,
+                    message = "Test keystroke failed: No active Bluetooth HID connection. Tap the Bluetooth bar and tap 'Use PC' on your target device."
+                ))
+                return@launch
             }
-            addLog(LogEntry(level = LogLevel.SUCCESS, message = "Test keystroke transmitted."))
+            val testLine = "// CodeFlow Keyboard verified!\n"
+            addLog(LogEntry(level = LogLevel.INFO, message = "Sending test keystrokes: ${testLine.trim()}"))
+            var deliveredCount = 0
+            for (ch in testLine) {
+                if (bluetoothHidManager.sendChar(ch)) {
+                    deliveredCount++
+                }
+            }
+            if (deliveredCount > 0) {
+                addLog(LogEntry(level = LogLevel.SUCCESS, message = "Test keystrokes delivered ($deliveredCount/${testLine.length} chars)."))
+            } else {
+                addLog(LogEntry(level = LogLevel.ERROR, message = "Failed to send keystrokes over Bluetooth HID."))
+            }
         }
     }
 
