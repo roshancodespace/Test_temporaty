@@ -34,6 +34,7 @@ class SafeZipExtractor {
         val canonicalDest = destinationDir.canonicalFile
         var fileCount = 0
         var byteCount = 0L
+        var lastProgressTime = 0L
         val maxFiles = 2000
         val maxTotalBytes = 100L * 1024L * 1024L // 100 MB limit safety
 
@@ -81,13 +82,20 @@ class SafeZipExtractor {
                         if (fileCount > maxFiles) {
                             throw IllegalStateException("ZIP contains too many entries (max $maxFiles allowed).")
                         }
-                        onProgress(fileCount)
+                        val now = System.currentTimeMillis()
+                        if (now - lastProgressTime >= 120 || fileCount == 1) {
+                            onProgress(fileCount)
+                            lastProgressTime = now
+                        }
                     }
 
                     zipIn.closeEntry()
                     entry = zipIn.nextEntry
                 }
             }
+
+            // Always dispatch final count
+            onProgress(fileCount)
 
             return ExtractionResult(
                 success = true,

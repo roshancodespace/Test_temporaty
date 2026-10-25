@@ -28,3 +28,14 @@ data class ProjectFilterRules(
         ".git", ".gradle", "build", "node_modules", ".idea", "dist", "out", ".venv", "__pycache__"
     )
 )
+
+data class ImportProgress(
+    val isActive: Boolean = false,
+    val title: String = "",
+    val statusText: String = "",
+    val filesCount: Int = 0,
+    val isComplete: Boolean = false,
+    val isError: Boolean = false,
+    val errorMessage: String? = null
+)
+

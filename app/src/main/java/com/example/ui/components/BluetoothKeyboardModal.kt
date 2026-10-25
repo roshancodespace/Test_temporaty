@@ -42,6 +42,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import android.provider.Settings
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -222,6 +227,101 @@ fun BluetoothKeyboardModal(
                             color = TextPrimary
                         )
                     }
+                }
+
+                // Context-specific actions
+                val context = LocalContext.current
+                when (hidState) {
+                    is BluetoothHidKeyboardManager.HidState.BluetoothDisabled -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                try {
+                                    val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                                    context.startActivity(enableBtIntent)
+                                } catch (_: Exception) {
+                                    try {
+                                        context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                                    } catch (_: Exception) {}
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StatusWarning.copy(alpha = 0.2f),
+                                contentColor = StatusWarning
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .testTag("enable_bluetooth_button")
+                        ) {
+                            Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Turn On Bluetooth / Open Settings",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                    is BluetoothHidKeyboardManager.HidState.Unsupported -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onRetryBluetooth,
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("retry_bluetooth_button")
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Retry", style = MaterialTheme.typography.labelSmall)
+                            }
+                            Button(
+                                onClick = {
+                                    onEnableSimulation()
+                                    onDismiss()
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = IdeAccent, contentColor = Color.Black),
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(38.dp)
+                                    .testTag("preview_mode_fallback_button")
+                            ) {
+                                Icon(Icons.Default.Computer, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    "Use Preview Mode",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                    is BluetoothHidKeyboardManager.HidState.RegisteringApp,
+                    is BluetoothHidKeyboardManager.HidState.Initializing -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                onEnableSimulation()
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                        ) {
+                            Text(
+                                "Taking long? Switch to Preview / Simulation Mode",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                    else -> {}
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

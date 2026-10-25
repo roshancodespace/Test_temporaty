@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.bluetooth.BluetoothHidKeyboardManager
 import com.example.bluetooth.HumanTypingSimulator
 import com.example.data.model.FileNode
+import com.example.data.model.ImportProgress
 import com.example.data.model.LogEntry
 import com.example.data.model.LogLevel
 import com.example.data.model.Project
@@ -40,6 +41,9 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
 
     private val _fileTree = MutableStateFlow<List<FileNode>>(emptyList())
     val fileTree: StateFlow<List<FileNode>> = _fileTree.asStateFlow()
+
+    private val _importProgress = MutableStateFlow<ImportProgress?>(null)
+    val importProgress: StateFlow<ImportProgress?> = _importProgress.asStateFlow()
 
     private val _importStatusMessage = MutableStateFlow<String?>(null)
     val importStatusMessage: StateFlow<String?> = _importStatusMessage.asStateFlow()
@@ -147,15 +151,22 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 // Apply saved inclusion states
                 fun applyInclusions(nodes: List<FileNode>): List<FileNode> {
                     return nodes.map { node ->
-                        val isInc = if (node.isDirectory) {
-                            node.isIncluded
+                        if (node.isDirectory) {
+                            val newChildren = applyInclusions(node.children)
+                            fun allDescFilesIncluded(n: FileNode): Boolean {
+                                if (!n.isDirectory) return n.isIncluded
+                                if (n.children.isEmpty()) return true
+                                return n.children.all { allDescFilesIncluded(it) }
+                            }
+                            val allIncluded = newChildren.isNotEmpty() && newChildren.all { allDescFilesIncluded(it) }
+                            node.copy(
+                                isIncluded = allIncluded,
+                                children = newChildren
+                            )
                         } else {
-                            saved.includedFilePaths.contains(node.relativePath)
+                            val isInc = saved.includedFilePaths.contains(node.relativePath)
+                            node.copy(isIncluded = isInc)
                         }
-                        node.copy(
-                            isIncluded = isInc,
-                            children = applyInclusions(node.children)
-                        )
                     }
                 }
                 val restoredTree = applyInclusions(tree)
@@ -217,23 +228,72 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    /**
+     * Toggles inclusion of a file or entire directory tree.
+     * When a folder is toggled, all descendant files/subfolders are updated to match.
+     * When a child file is toggled, parent folders recompute their inclusion state.
+     */
     fun toggleFileInclusion(fileId: String) {
-        fun toggleRecursive(nodes: List<FileNode>): List<FileNode> {
+        // Collect all descendant non-directory files
+        fun collectFiles(node: FileNode, outList: MutableList<FileNode>) {
+            if (!node.isDirectory) {
+                outList.add(node)
+            } else {
+                node.children.forEach { collectFiles(it, outList) }
+            }
+        }
+
+        // Recursively set inclusion state on target node and all its descendants
+        fun setAllDescendants(node: FileNode, included: Boolean): FileNode {
+            return node.copy(
+                isIncluded = included,
+                children = node.children.map { setAllDescendants(it, included) }
+            )
+        }
+
+        // Traverse tree, locate target fileId, and apply toggle
+        fun updateTree(nodes: List<FileNode>): List<FileNode> {
             return nodes.map { node ->
                 if (node.id == fileId) {
-                    val updated = !node.isIncluded
-                    node.copy(isIncluded = updated)
+                    if (node.isDirectory) {
+                        val files = mutableListOf<FileNode>()
+                        collectFiles(node, files)
+                        val allCurrentlyIncluded = files.isNotEmpty() && files.all { it.isIncluded }
+                        // If all children are selected, unselect all. Otherwise select all.
+                        val newIncluded = !allCurrentlyIncluded
+                        setAllDescendants(node, newIncluded)
+                    } else {
+                        node.copy(isIncluded = !node.isIncluded)
+                    }
                 } else if (node.isDirectory) {
-                    node.copy(children = toggleRecursive(node.children))
+                    node.copy(children = updateTree(node.children))
                 } else {
                     node
                 }
             }
         }
-        _fileTree.update { toggleRecursive(it) }
-        _currentProject.value?.let { persistProjectState(it, _fileTree.value) }
+
+        // Recompute parent folder isIncluded state so it accurately reflects all child files
+        fun recomputeFolderStates(node: FileNode): FileNode {
+            if (!node.isDirectory) return node
+            val updatedChildren = node.children.map { recomputeFolderStates(it) }
+            val files = mutableListOf<FileNode>()
+            node.copy(children = updatedChildren).let { collectFiles(it, files) }
+            val allFilesIncluded = files.isNotEmpty() && files.all { it.isIncluded }
+            return node.copy(
+                isIncluded = allFilesIncluded,
+                children = updatedChildren
+            )
+        }
+
+        val updatedTree = updateTree(_fileTree.value).map { recomputeFolderStates(it) }
+        _fileTree.value = updatedTree
+        _currentProject.value?.let { persistProjectState(it, updatedTree) }
     }
 
+    /**
+     * Selects all or deselects all files and folders recursively.
+     */
     fun toggleAllFiles(includeAll: Boolean) {
         fun updateRecursive(nodes: List<FileNode>): List<FileNode> {
             return nodes.map { node ->
@@ -244,11 +304,42 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
-        _fileTree.update { updateRecursive(it) }
-        _currentProject.value?.let { persistProjectState(it, _fileTree.value) }
+        val updatedTree = updateRecursive(_fileTree.value)
+        _fileTree.value = updatedTree
+        _currentProject.value?.let { persistProjectState(it, updatedTree) }
         addLog(LogEntry(
             level = LogLevel.INFO,
             message = if (includeAll) "Marked all files as INCLUDED." else "Deselected all files."
+        ))
+    }
+
+    /**
+     * Quick filter: Selects only source code & configuration files (.kt, .java, .xml, .gradle, .json, etc.),
+     * ignoring build artifacts, binary images, and lockfiles.
+     */
+    fun selectCodeFilesOnly() {
+        val codeExtensions = setOf(
+            "kt", "java", "xml", "json", "gradle", "properties", "toml", "yaml", "yml",
+            "md", "txt", "py", "js", "ts", "html", "css", "c", "cpp", "h", "sql", "sh"
+        )
+
+        fun updateNode(node: FileNode): FileNode {
+            return if (node.isDirectory) {
+                val newChildren = node.children.map { updateNode(it) }
+                val allIncluded = newChildren.isNotEmpty() && newChildren.all { it.isIncluded }
+                node.copy(isIncluded = allIncluded, children = newChildren)
+            } else {
+                val isCode = codeExtensions.contains(node.extension.lowercase())
+                node.copy(isIncluded = isCode)
+            }
+        }
+
+        val updatedTree = _fileTree.value.map { updateNode(it) }
+        _fileTree.value = updatedTree
+        _currentProject.value?.let { persistProjectState(it, updatedTree) }
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = "Applied filter: Code & config files selected."
         ))
     }
 
@@ -404,7 +495,11 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     fun importProjectZip(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             _isImporting.value = true
-            _importStatusMessage.value = "Reading ZIP archive..."
+            _importProgress.value = ImportProgress(
+                isActive = true,
+                title = "Importing ZIP Archive",
+                statusText = "Reading ZIP package..."
+            )
             addLog(LogEntry(level = LogLevel.INFO, message = "Importing local ZIP archive from SAF picker..."))
             try {
                 val context = getApplication<Application>()
@@ -417,11 +512,21 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 val targetDir = File(projectsDir, "imported_$timestamp")
 
                 val result = safeZipExtractor.extract(inputStream, targetDir) { count ->
-                    _importStatusMessage.value = "Extracted $count files safely..."
+                    _importProgress.value = ImportProgress(
+                        isActive = true,
+                        title = "Importing ZIP Archive",
+                        statusText = "Safely unpacked $count file(s)...",
+                        filesCount = count
+                    )
                 }
 
                 if (!result.success) {
-                    _importStatusMessage.value = "Import failed: ${result.errorMessage}"
+                    _importProgress.value = ImportProgress(
+                        isActive = true,
+                        title = "ZIP Import Failed",
+                        isError = true,
+                        errorMessage = result.errorMessage
+                    )
                     addLog(LogEntry(level = LogLevel.ERROR, message = "ZIP extraction error: ${result.errorMessage}"))
                     _isImporting.value = false
                     return@launch
@@ -446,13 +551,24 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 persistProjectState(project, tree)
                 clearCheckpoint()
 
-                _importStatusMessage.value = "Imported ${result.totalFiles} files successfully!"
+                _importProgress.value = ImportProgress(
+                    isActive = true,
+                    title = "ZIP Import Complete",
+                    statusText = "Imported ${result.totalFiles} files into persistent memory.",
+                    filesCount = result.totalFiles,
+                    isComplete = true
+                )
                 addLog(LogEntry(
                     level = LogLevel.SUCCESS,
                     message = "ZIP imported: '$projectName' (${result.totalFiles} files, ${result.totalBytes / 1024} KB saved to memory)."
                 ))
             } catch (e: Exception) {
-                _importStatusMessage.value = "Error: ${e.localizedMessage ?: "Unknown error"}"
+                _importProgress.value = ImportProgress(
+                    isActive = true,
+                    title = "Import Error",
+                    isError = true,
+                    errorMessage = e.localizedMessage ?: "Unknown error"
+                )
                 addLog(LogEntry(level = LogLevel.ERROR, message = "Import exception: ${e.localizedMessage}"))
             } finally {
                 _isImporting.value = false
@@ -463,15 +579,25 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     fun importGitHubRepo(repoUrl: String, branch: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isImporting.value = true
-            _importStatusMessage.value = "Fetching repository from GitHub..."
+            _importProgress.value = ImportProgress(
+                isActive = true,
+                title = "Importing GitHub Repository",
+                statusText = "Connecting to GitHub..."
+            )
             addLog(LogEntry(level = LogLevel.INFO, message = "Connecting to GitHub for repository '$repoUrl' ($branch)..."))
             try {
                 val result = gitHubRepoDownloader.downloadRepo(repoUrl, branch) { status ->
-                    _importStatusMessage.value = status
+                    _importProgress.value = _importProgress.value?.copy(statusText = status)
+                        ?: ImportProgress(isActive = true, title = "Importing GitHub Repository", statusText = status)
                 }
 
                 if (!result.success || result.project == null) {
-                    _importStatusMessage.value = "GitHub import error: ${result.errorMessage}"
+                    _importProgress.value = ImportProgress(
+                        isActive = true,
+                        title = "GitHub Import Failed",
+                        isError = true,
+                        errorMessage = result.errorMessage
+                    )
                     addLog(LogEntry(level = LogLevel.ERROR, message = "GitHub download failed: ${result.errorMessage}"))
                     return@launch
                 }
@@ -482,18 +608,33 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
                 persistProjectState(result.project, result.fileTree)
                 clearCheckpoint()
 
-                _importStatusMessage.value = "Successfully imported ${result.project.name}!"
+                _importProgress.value = ImportProgress(
+                    isActive = true,
+                    title = "Repository Imported",
+                    statusText = "Loaded ${result.project.name} (${result.project.totalFiles} files ready).",
+                    filesCount = result.project.totalFiles,
+                    isComplete = true
+                )
                 addLog(LogEntry(
                     level = LogLevel.SUCCESS,
                     message = "GitHub repository unpacked & saved: '${result.project.name}' (${result.project.totalFiles} files ready)."
                 ))
             } catch (e: Exception) {
-                _importStatusMessage.value = "GitHub import failed: ${e.localizedMessage}"
+                _importProgress.value = ImportProgress(
+                    isActive = true,
+                    title = "GitHub Import Failed",
+                    isError = true,
+                    errorMessage = e.localizedMessage ?: "Network or extraction error"
+                )
                 addLog(LogEntry(level = LogLevel.ERROR, message = "GitHub fetch error: ${e.localizedMessage}"))
             } finally {
                 _isImporting.value = false
             }
         }
+    }
+
+    fun dismissImportProgress() {
+        _importProgress.value = null
     }
 
     fun dismissImportStatus() {

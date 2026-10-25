@@ -57,6 +57,7 @@ import com.example.ui.components.BluetoothHostBar
 import com.example.ui.components.BluetoothKeyboardModal
 import com.example.ui.components.ConsoleLogCard
 import com.example.ui.components.GitHubImportModal
+import com.example.ui.components.ImportProgressModal
 import com.example.ui.components.ProjectSourceCard
 import com.example.ui.components.SettingsModal
 import com.example.ui.components.TypingControlCard
@@ -97,8 +98,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     val currentProject by viewModel.currentProject.collectAsState()
     val fileTree by viewModel.fileTree.collectAsState()
     val eventLogs by viewModel.eventLogs.collectAsState()
-    val importMessage by viewModel.importStatusMessage.collectAsState()
-    val isImporting by viewModel.isImporting.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
 
     val typingCps by viewModel.typingCps.collectAsState()
     val linePauseMs by viewModel.linePauseMs.collectAsState()
@@ -140,13 +140,6 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     ) { uri ->
         if (uri != null) {
             viewModel.importProjectZip(uri)
-        }
-    }
-
-    LaunchedEffect(importMessage) {
-        importMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.dismissImportStatus()
         }
     }
 
@@ -253,6 +246,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     fileTree = fileTree,
                     onToggleFileInclusion = { viewModel.toggleFileInclusion(it) },
                     onToggleAllFiles = { viewModel.toggleAllFiles(it) },
+                    onSelectCodeOnly = { viewModel.selectCodeFilesOnly() },
                     onImportGitHubClick = { showGitHubImportModal = true },
                     onImportZipClick = {
                         zipPickerLauncher.launch(
@@ -270,41 +264,14 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
-
-            // Loading overlay during repository extractions
-            if (isImporting) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(IdeBackground.copy(alpha = 0.75f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        color = IdeSurface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorder),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                color = IdeAccent,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.5.dp
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = "Extracting repository files safely...",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                color = TextPrimary
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
+
+    // Dedicated GitHub & ZIP Extraction Progress Modal (replaces snackbar spam)
+    ImportProgressModal(
+        progress = importProgress,
+        onDismiss = { viewModel.dismissImportProgress() }
+    )
 
     // GitHub Repo Import Modal
     if (showGitHubImportModal) {
