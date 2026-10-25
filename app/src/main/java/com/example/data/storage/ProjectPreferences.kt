@@ -58,6 +58,11 @@ class ProjectPreferences(context: Context) {
         // Theme
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_THEME_PALETTE = "theme_palette"
+
+        // Bluetooth Spoofing & Power Management
+        private const val KEY_ORIGINAL_BT_NAME = "original_bt_name"
+        private const val KEY_SPOOFED_BT_NAME = "spoofed_bt_name"
+        private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
     }
 
     fun saveProject(
@@ -158,4 +163,28 @@ class ProjectPreferences(context: Context) {
 
     fun getThemeMode(): String = prefs.getString(KEY_THEME_MODE, "system") ?: "system"
     fun getThemePalette(): String = prefs.getString(KEY_THEME_PALETTE, "vscode") ?: "vscode"
+
+    fun saveOriginalBtName(name: String) {
+        if (!prefs.contains(KEY_ORIGINAL_BT_NAME)) {
+            prefs.edit().putString(KEY_ORIGINAL_BT_NAME, name).apply()
+        }
+    }
+
+    fun getOriginalBtName(): String? = prefs.getString(KEY_ORIGINAL_BT_NAME, null)
+
+    fun saveSpoofedBtName(name: String?) {
+        if (name == null) {
+            prefs.edit().remove(KEY_SPOOFED_BT_NAME).apply()
+        } else {
+            prefs.edit().putString(KEY_SPOOFED_BT_NAME, name).apply()
+        }
+    }
+
+    fun getSpoofedBtName(): String? = prefs.getString(KEY_SPOOFED_BT_NAME, null)
+
+    fun setKeepScreenOn(keep: Boolean) {
+        prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, keep).apply()
+    }
+
+    fun getKeepScreenOn(): Boolean = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
 }

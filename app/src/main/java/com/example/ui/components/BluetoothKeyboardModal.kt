@@ -4,9 +4,13 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,13 +30,17 @@ import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,8 +50,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +72,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.bluetooth.BluetoothHidKeyboardManager
 import com.example.ui.theme.IdeAccent
+import com.example.ui.theme.IdeBorder
 import com.example.ui.theme.IdeBorderSubtle
 import com.example.ui.theme.IdePrimary
 import com.example.ui.theme.IdeSurface
@@ -69,13 +84,18 @@ import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BluetoothKeyboardModal(
     hidState: BluetoothHidKeyboardManager.HidState,
     deviceName: String = "Android Device",
+    originalDeviceName: String = "Android Device",
+    isNameSpoofed: Boolean = false,
     bondedHosts: List<BluetoothHidKeyboardManager.PairedHost> = emptyList(),
     onConnectToHost: (String) -> Unit = {},
     onDisconnectHost: () -> Unit = {},
+    onSpoofName: (String) -> Unit = {},
+    onRestoreOriginalName: () -> Unit = {},
     onStartTypingIntoPc: () -> Unit,
     onEmergencyHalt: () -> Unit,
     onEnableSimulation: () -> Unit,
@@ -83,6 +103,7 @@ fun BluetoothKeyboardModal(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    var customNameInput by remember(deviceName) { mutableStateOf(deviceName) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -157,55 +178,248 @@ fun BluetoothKeyboardModal(
                 HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Crucial Device Name Identification Callout
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(IdeAccent.copy(alpha = 0.12f))
-                        .padding(12.dp)
+                // Device Name & Bluetooth Spoofing Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isNameSpoofed) IdeAccent.copy(alpha = 0.08f) else IdeSurfaceVariant.copy(alpha = 0.6f)
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isNameSpoofed) IdeAccent.copy(alpha = 0.4f) else IdeBorderSubtle
+                    )
                 ) {
-                    Row(verticalAlignment = Alignment.Top) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(IdeAccent.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.PhoneAndroid,
-                                contentDescription = null,
-                                tint = IdeAccent,
-                                modifier = Modifier.size(17.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isNameSpoofed) IdeAccent.copy(alpha = 0.2f) else IdeSurfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isNameSpoofed) Icons.Default.Keyboard else Icons.Default.PhoneAndroid,
+                                        contentDescription = null,
+                                        tint = if (isNameSpoofed) IdeAccent else TextSecondary,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "ADVERTISED BLUETOOTH NAME",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        ),
+                                        color = if (isNameSpoofed) IdeAccent else TextSecondary
+                                    )
+                                    Text(
+                                        text = deviceName,
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        ),
+                                        color = TextPrimary
+                                    )
+                                }
+                            }
+
+                            // Badge
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isNameSpoofed) StatusSuccess.copy(alpha = 0.2f) else IdeSurfaceVariant)
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = if (isNameSpoofed) "Spoofed Active" else "Device Default",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = if (isNameSpoofed) StatusSuccess else TextMuted,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "DEVICE NAME ON YOUR PC",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (isNameSpoofed) {
+                                "Your PC now sees this device as '$deviceName'. Tap the connect button on your PC or tap below to start typing."
+                            } else {
+                                "Currently your PC sees this device as '$deviceName'. You can spoof the name to 'CodeFlow Studio Keyboard' or a wireless keyboard preset so it appears clearly in your PC's Bluetooth list."
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = TextSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Presets Chips
+                        Text(
+                            text = "QUICK KEYBOARD PRESETS (TAP TO APPLY)",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = TextMuted
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val presets = listOf(
+                                "CodeFlow Studio Keyboard",
+                                "Logitech K380 Keyboard",
+                                "Apple Magic Keyboard",
+                                "Dell KB216 Keyboard"
+                            )
+                            presets.forEach { preset ->
+                                val isCurrent = deviceName.equals(preset, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isCurrent) IdeAccent.copy(alpha = 0.2f) else IdeSurface)
+                                        .border(
+                                            1.dp,
+                                            if (isCurrent) IdeAccent else IdeBorderSubtle,
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .clickable {
+                                            customNameInput = preset
+                                            onSpoofName(preset)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isCurrent) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = IdeAccent,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                        }
+                                        Text(
+                                            text = preset,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.5.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                                            ),
+                                            color = if (isCurrent) IdeAccent else TextPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Custom Name Input Field & Action Buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = customNameInput,
+                                onValueChange = { customNameInput = it },
+                                label = { Text("Custom Bluetooth Name", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp),
+                                textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = IdeSurface,
+                                    unfocusedContainerColor = IdeSurface,
+                                    focusedIndicatorColor = IdeAccent,
+                                    unfocusedIndicatorColor = IdeBorderSubtle
+                                )
+                            )
+
+                            Button(
+                                onClick = { onSpoofName(customNameInput) },
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = IdeAccent,
+                                    contentColor = Color.Black
                                 ),
-                                color = IdeAccent
-                            )
-                            Text(
-                                text = deviceName,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                ),
-                                color = TextPrimary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Your PC sees this phone as '$deviceName' in its Bluetooth list (not a new device named CodeFlow Studio). When paired, your phone acts as an external physical keyboard.",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                color = TextSecondary
-                            )
+                                enabled = customNameInput.isNotBlank() && customNameInput.trim() != deviceName,
+                                modifier = Modifier.height(48.dp)
+                            ) {
+                                Text("Apply", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+
+                        // Restore original name button if spoofed
+                        if (isNameSpoofed || originalDeviceName != deviceName) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onRestoreOriginalName()
+                                        customNameInput = originalDeviceName
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Undo,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Restore phone name ('$originalDeviceName')",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp)
+                                    )
+                                }
+                            }
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Background Typing Assurance Note
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = StatusSuccess,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Background Typing Protected: Keystrokes stream even with screen locked via Android WakeLock.",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = TextMuted
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

@@ -210,7 +210,20 @@ class BluetoothHidKeyboardManager(
         connectedHostDevice = null
     }
 
-    fun initBluetooth() {
+    private val preferences = com.example.data.storage.ProjectPreferences(context)
+
+    fun initBluetooth(force: Boolean = false) {
+        if (!force) {
+            if (hidDevice != null && (_hidState.value is HidState.WaitingForHost || _hidState.value is HidState.Connected)) {
+                // Already active and registered! Keep Bluetooth HID connection alive across screen sleep
+                return
+            }
+            if (_hidState.value is HidState.RegisteringApp) {
+                // Registration already in flight; watchdog is running
+                return
+            }
+        }
+
         cleanupProfile()
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -225,6 +238,16 @@ class BluetoothHidKeyboardManager(
         if (!bluetoothAdapter!!.isEnabled) {
             _hidState.value = HidState.BluetoothDisabled
             return
+        }
+
+        // Apply saved spoofed Bluetooth name if user configured one
+        preferences.getSpoofedBtName()?.let { spoofed ->
+            try {
+                if (preferences.getOriginalBtName() == null && bluetoothAdapter!!.name != null) {
+                    preferences.saveOriginalBtName(bluetoothAdapter!!.name)
+                }
+                bluetoothAdapter!!.setName(spoofed)
+            } catch (_: SecurityException) {}
         }
 
         _hidState.value = HidState.RegisteringApp
@@ -309,6 +332,45 @@ class BluetoothHidKeyboardManager(
             "Android Device"
         }
     }
+
+    @SuppressLint("MissingPermission")
+    fun spoofDeviceName(customName: String): Boolean {
+        val adapter = bluetoothAdapter ?: return false
+        val trimmed = customName.trim()
+        if (trimmed.isEmpty()) return false
+        return try {
+            val current = adapter.name
+            if (current != null && preferences.getOriginalBtName() == null) {
+                preferences.saveOriginalBtName(current)
+            }
+            val ok = adapter.setName(trimmed)
+            if (ok) {
+                preferences.saveSpoofedBtName(trimmed)
+            }
+            ok
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun restoreOriginalName(): Boolean {
+        val adapter = bluetoothAdapter ?: return false
+        val original = preferences.getOriginalBtName() ?: return false
+        return try {
+            val ok = adapter.setName(original)
+            if (ok) {
+                preferences.saveSpoofedBtName(null)
+            }
+            ok
+        } catch (_: SecurityException) {
+            false
+        }
+    }
+
+    fun isNameSpoofed(): Boolean = preferences.getSpoofedBtName() != null
+
+    fun getOriginalDeviceName(): String = preferences.getOriginalBtName() ?: getDeviceName()
 
     @SuppressLint("MissingPermission")
     fun getBondedHosts(): List<PairedHost> {

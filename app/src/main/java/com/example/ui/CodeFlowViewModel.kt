@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.bluetooth.BluetoothHidKeyboardManager
 import com.example.bluetooth.HumanTypingSimulator
+import com.example.bluetooth.KeystrokeForegroundService
 import com.example.data.model.FileNode
 import com.example.data.model.ImportProgress
 import com.example.data.model.LogEntry
@@ -76,6 +77,13 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     // Persistent Checkpoint Memory
     private val _checkpoint = MutableStateFlow<TypingCheckpoint?>(preferences.getCheckpoint())
     val checkpoint: StateFlow<TypingCheckpoint?> = _checkpoint.asStateFlow()
+
+    // Bluetooth Device Name Spoofing
+    val currentBtName = MutableStateFlow(bluetoothHidManager.getDeviceName())
+    val isBtNameSpoofed = MutableStateFlow(bluetoothHidManager.isNameSpoofed())
+
+    // Screen Awake / Power Policy
+    val keepScreenAwake = MutableStateFlow(preferences.getKeepScreenOn())
 
     private val safeZipExtractor = SafeZipExtractor()
     private val gitHubRepoDownloader = GitHubRepoDownloader(application)
@@ -410,6 +418,12 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
 
         clearCheckpoint()
 
+        // Keep CPU awake and Bluetooth streaming alive even if screen turns off
+        KeystrokeForegroundService.start(
+            getApplication(),
+            payloads.firstOrNull()?.relativePath ?: "project files"
+        )
+
         humanTypingSimulator.startTypingSequence(
             files = payloads,
             startDelayMs = (startCountdownSec.value * 1000).toLong(),
@@ -436,6 +450,12 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
             val foundIdx = payloads.indexOfFirst { it.relativePath == cp.fileRelativePath }
             if (foundIdx >= 0) targetFileIndex = foundIdx
         }
+
+        // Keep CPU awake and Bluetooth streaming alive even if screen turns off
+        KeystrokeForegroundService.start(
+            getApplication(),
+            payloads.getOrNull(targetFileIndex)?.relativePath ?: "project files"
+        )
 
         humanTypingSimulator.startTypingSequence(
             files = payloads,
@@ -464,6 +484,7 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun pauseBluetoothTyping() {
+        KeystrokeForegroundService.stop(getApplication())
         humanTypingSimulator.pause(
             onLog = { addLog(it) },
             onCheckpointSaved = { saveCheckpointState(it) }
@@ -471,14 +492,47 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun resumeBluetoothTyping() {
+        val current = humanTypingSimulator.typingState.value
+        val fileName = if (current is HumanTypingSimulator.TypingState.Paused) current.currentFile else "code"
+        KeystrokeForegroundService.start(getApplication(), fileName)
         humanTypingSimulator.resume { addLog(it) }
     }
 
     fun stopBluetoothTyping() {
+        KeystrokeForegroundService.stop(getApplication())
         humanTypingSimulator.stop(
             onLog = { addLog(it) },
             onCheckpointSaved = { saveCheckpointState(it) }
         )
+    }
+
+    fun spoofBluetoothName(name: String) {
+        val success = bluetoothHidManager.spoofDeviceName(name)
+        currentBtName.value = bluetoothHidManager.getDeviceName()
+        isBtNameSpoofed.value = bluetoothHidManager.isNameSpoofed()
+        addLog(LogEntry(
+            level = if (success) LogLevel.SUCCESS else LogLevel.WARN,
+            message = if (success) "Bluetooth device name spoofed to '$name'. Your PC will now see this name!" else "Failed to spoof Bluetooth name."
+        ))
+    }
+
+    fun restoreOriginalBluetoothName() {
+        val success = bluetoothHidManager.restoreOriginalName()
+        currentBtName.value = bluetoothHidManager.getDeviceName()
+        isBtNameSpoofed.value = bluetoothHidManager.isNameSpoofed()
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = "Restored original Bluetooth device name: '${currentBtName.value}'."
+        ))
+    }
+
+    fun toggleKeepScreenAwake(keep: Boolean) {
+        keepScreenAwake.value = keep
+        preferences.setKeepScreenOn(keep)
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = if (keep) "Screen wake lock enabled during typing." else "Screen wake lock disabled."
+        ))
     }
 
     fun testSampleKeystroke() {
