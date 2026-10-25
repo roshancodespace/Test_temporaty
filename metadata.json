@@ -1,0 +1,6 @@
+{
+  "name": "CodeFlow Studio",
+  "description": "Deterministic coding session player for realistic screen recordings, tutorials, and presentations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
