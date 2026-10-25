@@ -325,6 +325,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
             onDisconnectHost = { viewModel.bluetoothHidManager.disconnectHost() },
             onSpoofName = { viewModel.spoofBluetoothName(it) },
             onRestoreOriginalName = { viewModel.restoreOriginalBluetoothName() },
+            onTestKeystroke = { viewModel.testSampleKeystroke() },
             onStartTypingIntoPc = { viewModel.startBluetoothTypingIntoPc() },
             onEmergencyHalt = { viewModel.bluetoothHidManager.emergencyReleaseAllKeys() },
             onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() },

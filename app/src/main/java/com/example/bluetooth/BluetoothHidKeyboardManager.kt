@@ -45,6 +45,8 @@ class BluetoothHidKeyboardManager(
         val isConnected: Boolean = false
     )
 
+    private val preferences = com.example.data.storage.ProjectPreferences(context)
+
     private val _hidState = MutableStateFlow<HidState>(HidState.Initializing)
     val hidState: StateFlow<HidState> = _hidState.asStateFlow()
 
@@ -58,6 +60,15 @@ class BluetoothHidKeyboardManager(
     private var isReceiverRegistered = false
     private var registrationTimeoutJob: Job? = null
 
+    private fun isDeviceAclConnected(device: BluetoothDevice): Boolean {
+        return try {
+            val method = device.javaClass.getMethod("isConnected")
+            method.invoke(device) as? Boolean ?: false
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     // BroadcastReceiver for real-time Bluetooth adapter state and device ACL changes
     private val bluetoothReceiver = object : BroadcastReceiver() {
         @SuppressLint("MissingPermission")
@@ -68,7 +79,6 @@ class BluetoothHidKeyboardManager(
                     val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
                     when (state) {
                         BluetoothAdapter.STATE_ON -> {
-                            // User turned Bluetooth ON: Automatically initialize HID service without app restart!
                             initBluetooth()
                         }
                         BluetoothAdapter.STATE_OFF, BluetoothAdapter.STATE_TURNING_OFF -> {
@@ -89,8 +99,12 @@ class BluetoothHidKeyboardManager(
                     }
                     if (device != null) {
                         connectedHostDevice = device
+                        // Immediately bind HID channel when Windows initiates ACL connection so Windows doesn't drop it
+                        try {
+                            hidDevice?.connect(device)
+                        } catch (_: Exception) {}
                         _hidState.value = HidState.Connected(
-                            deviceName = device.name ?: "Connected Host",
+                            deviceName = runCatching { device.name }.getOrNull() ?: "Connected PC",
                             deviceAddress = device.address
                         )
                     }
@@ -137,11 +151,21 @@ class BluetoothHidKeyboardManager(
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             registrationTimeoutJob?.cancel()
             if (registered) {
-                if (pluggedDevice != null) {
-                    connectedHostDevice = pluggedDevice
+                val hid = hidDevice
+                val activeDevice = pluggedDevice
+                    ?: runCatching { hid?.connectedDevices?.firstOrNull() }.getOrNull()
+                    ?: runCatching {
+                        bluetoothAdapter?.bondedDevices?.firstOrNull { isDeviceAclConnected(it) }
+                    }.getOrNull()
+
+                if (activeDevice != null) {
+                    connectedHostDevice = activeDevice
+                    try {
+                        hid?.connect(activeDevice)
+                    } catch (_: Exception) {}
                     _hidState.value = HidState.Connected(
-                        deviceName = pluggedDevice.name ?: "PC / Host",
-                        deviceAddress = pluggedDevice.address
+                        deviceName = runCatching { activeDevice.name }.getOrNull() ?: "PC / Host",
+                        deviceAddress = activeDevice.address
                     )
                 } else {
                     _hidState.value = HidState.WaitingForHost
@@ -158,15 +182,17 @@ class BluetoothHidKeyboardManager(
                 BluetoothProfile.STATE_CONNECTED -> {
                     connectedHostDevice = device
                     _hidState.value = HidState.Connected(
-                        deviceName = device.name ?: "Connected Host",
+                        deviceName = runCatching { device.name }.getOrNull() ?: "Connected Host",
                         deviceAddress = device.address
                     )
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
-                    if (connectedHostDevice?.address == device.address) {
-                        connectedHostDevice = null
+                    if (!isDeviceAclConnected(device)) {
+                        if (connectedHostDevice?.address == device.address) {
+                            connectedHostDevice = null
+                        }
+                        _hidState.value = HidState.WaitingForHost
                     }
-                    _hidState.value = HidState.WaitingForHost
                 }
             }
         }
@@ -210,16 +236,12 @@ class BluetoothHidKeyboardManager(
         connectedHostDevice = null
     }
 
-    private val preferences = com.example.data.storage.ProjectPreferences(context)
-
     fun initBluetooth(force: Boolean = false) {
         if (!force) {
             if (hidDevice != null && (_hidState.value is HidState.WaitingForHost || _hidState.value is HidState.Connected)) {
-                // Already active and registered! Keep Bluetooth HID connection alive across screen sleep
                 return
             }
             if (_hidState.value is HidState.RegisteringApp) {
-                // Registration already in flight; watchdog is running
                 return
             }
         }
@@ -235,19 +257,26 @@ class BluetoothHidKeyboardManager(
             return
         }
 
-        if (!bluetoothAdapter!!.isEnabled) {
+        val isBtEnabled = try {
+            bluetoothAdapter!!.isEnabled
+        } catch (_: SecurityException) {
+            _hidState.value = HidState.NeedsPermission
+            return
+        }
+
+        if (!isBtEnabled) {
             _hidState.value = HidState.BluetoothDisabled
             return
         }
 
         // Apply saved spoofed Bluetooth name if user configured one
-        preferences.getSpoofedBtName()?.let { spoofed ->
-            try {
+        runCatching {
+            preferences.getSpoofedBtName()?.let { spoofed ->
                 if (preferences.getOriginalBtName() == null && bluetoothAdapter!!.name != null) {
                     preferences.saveOriginalBtName(bluetoothAdapter!!.name)
                 }
                 bluetoothAdapter!!.setName(spoofed)
-            } catch (_: SecurityException) {}
+            }
         }
 
         _hidState.value = HidState.RegisteringApp
@@ -377,10 +406,23 @@ class BluetoothHidKeyboardManager(
         return try {
             val bonded = bluetoothAdapter?.bondedDevices ?: return emptyList()
             bonded.map { device ->
+                val isHidConn = connectedHostDevice?.address == device.address ||
+                        runCatching { hidDevice?.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED }.getOrDefault(false)
+                val isAclConn = isDeviceAclConnected(device)
+                if ((isHidConn || isAclConn) && connectedHostDevice == null) {
+                    connectedHostDevice = device
+                    if (hidDevice != null) {
+                        runCatching { hidDevice?.connect(device) }
+                        _hidState.value = HidState.Connected(
+                            deviceName = device.name ?: device.address,
+                            deviceAddress = device.address
+                        )
+                    }
+                }
                 PairedHost(
                     name = device.name ?: device.address,
                     address = device.address,
-                    isConnected = connectedHostDevice?.address == device.address
+                    isConnected = isHidConn || isAclConn || connectedHostDevice?.address == device.address
                 )
             }.sortedWith(compareByDescending<PairedHost> { it.isConnected }.thenBy { it.name.lowercase() })
         } catch (_: SecurityException) {
@@ -390,18 +432,15 @@ class BluetoothHidKeyboardManager(
 
     @SuppressLint("MissingPermission")
     fun connectToHost(deviceAddress: String): Boolean {
-        val hid = hidDevice ?: return false
         val device = bluetoothAdapter?.getRemoteDevice(deviceAddress) ?: return false
         return try {
-            val initiated = hid.connect(device)
-            if (initiated) {
-                connectedHostDevice = device
-                _hidState.value = HidState.Connected(
-                    deviceName = device.name ?: device.address,
-                    deviceAddress = device.address
-                )
-            }
-            initiated
+            val initiated = hidDevice?.connect(device) ?: false
+            connectedHostDevice = device
+            _hidState.value = HidState.Connected(
+                deviceName = device.name ?: device.address,
+                deviceAddress = device.address
+            )
+            initiated || isDeviceAclConnected(device)
         } catch (e: Exception) {
             false
         }
@@ -409,15 +448,12 @@ class BluetoothHidKeyboardManager(
 
     @SuppressLint("MissingPermission")
     fun disconnectHost(): Boolean {
-        val hid = hidDevice ?: return false
         val device = connectedHostDevice ?: return false
         return try {
-            val ok = hid.disconnect(device)
-            if (ok) {
-                connectedHostDevice = null
-                _hidState.value = HidState.WaitingForHost
-            }
-            ok
+            runCatching { hidDevice?.disconnect(device) }
+            connectedHostDevice = null
+            _hidState.value = HidState.WaitingForHost
+            true
         } catch (_: Exception) {
             false
         }
@@ -438,6 +474,14 @@ class BluetoothHidKeyboardManager(
 
         val device = connectedHostDevice ?: return false
         val hid = hidDevice ?: return false
+
+        // Wake HID channel if host is ACL connected but HID channel went idle
+        runCatching {
+            if (hid.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
+                hid.connect(device)
+                delay(40L)
+            }
+        }
 
         val keyDownReport = HidKeycodes.makeReport(keystroke.modifier, keystroke.keycode)
         val keyUpReport = HidKeycodes.emptyReport()
