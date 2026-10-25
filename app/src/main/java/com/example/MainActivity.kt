@@ -283,8 +283,14 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
 
     // Bluetooth PC Keyboard Pairing Guide Modal
     if (showBluetoothModal) {
+        val pairedHosts = remember(showBluetoothModal, hidState) { viewModel.bluetoothHidManager.getBondedHosts() }
+        val deviceName = remember(showBluetoothModal) { viewModel.bluetoothHidManager.getDeviceName() }
         BluetoothKeyboardModal(
             hidState = hidState,
+            deviceName = deviceName,
+            bondedHosts = pairedHosts,
+            onConnectToHost = { viewModel.bluetoothHidManager.connectToHost(it) },
+            onDisconnectHost = { viewModel.bluetoothHidManager.disconnectHost() },
             onStartTypingIntoPc = { viewModel.startBluetoothTypingIntoPc() },
             onEmergencyHalt = { viewModel.bluetoothHidManager.emergencyReleaseAllKeys() },
             onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() },

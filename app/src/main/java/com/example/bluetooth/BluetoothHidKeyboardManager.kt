@@ -39,6 +39,12 @@ class BluetoothHidKeyboardManager(
         data class SimulationMode(val reason: String) : HidState()
     }
 
+    data class PairedHost(
+        val name: String,
+        val address: String,
+        val isConnected: Boolean = false
+    )
+
     private val _hidState = MutableStateFlow<HidState>(HidState.Initializing)
     val hidState: StateFlow<HidState> = _hidState.asStateFlow()
 
@@ -293,6 +299,66 @@ class BluetoothHidKeyboardManager(
         registrationTimeoutJob?.cancel()
         _isSimulationEnabled.value = true
         _hidState.value = HidState.SimulationMode("Simulated PC Keyboard Output active")
+    }
+
+    @SuppressLint("MissingPermission")
+    fun getDeviceName(): String {
+        return try {
+            bluetoothAdapter?.name ?: "Android Device"
+        } catch (_: SecurityException) {
+            "Android Device"
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun getBondedHosts(): List<PairedHost> {
+        return try {
+            val bonded = bluetoothAdapter?.bondedDevices ?: return emptyList()
+            bonded.map { device ->
+                PairedHost(
+                    name = device.name ?: device.address,
+                    address = device.address,
+                    isConnected = connectedHostDevice?.address == device.address
+                )
+            }.sortedWith(compareByDescending<PairedHost> { it.isConnected }.thenBy { it.name.lowercase() })
+        } catch (_: SecurityException) {
+            emptyList()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun connectToHost(deviceAddress: String): Boolean {
+        val hid = hidDevice ?: return false
+        val device = bluetoothAdapter?.getRemoteDevice(deviceAddress) ?: return false
+        return try {
+            val initiated = hid.connect(device)
+            if (initiated) {
+                connectedHostDevice = device
+                _hidState.value = HidState.Connected(
+                    deviceName = device.name ?: device.address,
+                    deviceAddress = device.address
+                )
+            }
+            initiated
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun disconnectHost(): Boolean {
+        val hid = hidDevice ?: return false
+        val device = connectedHostDevice ?: return false
+        return try {
+            val ok = hid.disconnect(device)
+            if (ok) {
+                connectedHostDevice = null
+                _hidState.value = HidState.WaitingForHost
+            }
+            ok
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**

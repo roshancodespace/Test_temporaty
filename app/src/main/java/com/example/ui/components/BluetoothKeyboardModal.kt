@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,11 +23,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -41,12 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import android.bluetooth.BluetoothAdapter
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -70,22 +72,28 @@ import com.example.ui.theme.TextSecondary
 @Composable
 fun BluetoothKeyboardModal(
     hidState: BluetoothHidKeyboardManager.HidState,
+    deviceName: String = "Android Device",
+    bondedHosts: List<BluetoothHidKeyboardManager.PairedHost> = emptyList(),
+    onConnectToHost: (String) -> Unit = {},
+    onDisconnectHost: () -> Unit = {},
     onStartTypingIntoPc: () -> Unit,
     onEmergencyHalt: () -> Unit,
     onEnableSimulation: () -> Unit,
     onRetryBluetooth: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Card(
             modifier = Modifier
-                .widthIn(min = 320.dp, max = 500.dp)
+                .widthIn(min = 320.dp, max = 520.dp)
                 .fillMaxWidth(0.92f)
                 .testTag("bluetooth_keyboard_modal"),
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = IdeSurface)
         ) {
             Column(
@@ -93,7 +101,7 @@ fun BluetoothKeyboardModal(
                     .padding(20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Unified Header
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -125,7 +133,7 @@ fun BluetoothKeyboardModal(
                                 color = TextPrimary
                             )
                             Text(
-                                text = "Humanized keystroke transmission to PC VS Code",
+                                text = "Keystroke streamer to PC VS Code / IDE",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
@@ -147,51 +155,97 @@ fun BluetoothKeyboardModal(
 
                 Spacer(modifier = Modifier.height(14.dp))
                 HorizontalDivider(color = IdeBorderSubtle, thickness = 1.dp)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Crucial Device Name Identification Callout
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(IdeAccent.copy(alpha = 0.12f))
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(IdeAccent.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhoneAndroid,
+                                contentDescription = null,
+                                tint = IdeAccent,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "DEVICE NAME ON YOUR PC",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                color = IdeAccent
+                            )
+                            Text(
+                                text = deviceName,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                ),
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Your PC sees this phone as '$deviceName' in its Bluetooth list (not a new device named CodeFlow Studio). When paired, your phone acts as an external physical keyboard.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Connection Status Strip
-                val statusInfo = when (hidState) {
-                    is BluetoothHidKeyboardManager.HidState.Connected -> StatusDisplayData(
-                        icon = Icons.Default.BluetoothConnected,
-                        color = StatusSuccess,
-                        title = "CONNECTED TO PC",
-                        subtitle = "${hidState.deviceName} (${hidState.deviceAddress})"
+                val (statusColor, statusTitle, statusSubtitle) = when (hidState) {
+                    is BluetoothHidKeyboardManager.HidState.Connected -> Triple(
+                        StatusSuccess,
+                        "CONNECTED TO PC",
+                        "${hidState.deviceName} (${hidState.deviceAddress})"
                     )
-                    is BluetoothHidKeyboardManager.HidState.WaitingForHost -> StatusDisplayData(
-                        icon = Icons.Default.Bluetooth,
-                        color = IdeAccent,
-                        title = "READY TO PAIR WITH PC",
-                        subtitle = "Pair in PC Bluetooth settings as 'CodeFlow Studio Keyboard'"
+                    is BluetoothHidKeyboardManager.HidState.WaitingForHost -> Triple(
+                        IdeAccent,
+                        "READY TO PAIR / CONNECT",
+                        "Waiting for PC connection to '$deviceName'"
                     )
-                    is BluetoothHidKeyboardManager.HidState.BluetoothDisabled -> StatusDisplayData(
-                        icon = Icons.Default.BluetoothDisabled,
-                        color = StatusWarning,
-                        title = "BLUETOOTH OFF",
-                        subtitle = "Enable Bluetooth on your device to broadcast as a keyboard."
+                    is BluetoothHidKeyboardManager.HidState.BluetoothDisabled -> Triple(
+                        StatusWarning,
+                        "BLUETOOTH OFF",
+                        "Turn on Bluetooth to broadcast keyboard profile."
                     )
-                    is BluetoothHidKeyboardManager.HidState.SimulationMode -> StatusDisplayData(
-                        icon = Icons.Default.Computer,
-                        color = IdeAccent,
-                        title = "PREVIEW / SIMULATION MODE",
-                        subtitle = hidState.reason
+                    is BluetoothHidKeyboardManager.HidState.SimulationMode -> Triple(
+                        IdeAccent,
+                        "PREVIEW / SIMULATION MODE",
+                        hidState.reason
                     )
-                    is BluetoothHidKeyboardManager.HidState.Unsupported -> StatusDisplayData(
-                        icon = Icons.Default.ErrorOutline,
-                        color = StatusWarning,
-                        title = "HID HARDWARE NOT DETECTED",
-                        subtitle = hidState.reason
+                    is BluetoothHidKeyboardManager.HidState.Unsupported -> Triple(
+                        StatusWarning,
+                        "NOTICE: HID PERIPHERAL MODE",
+                        hidState.reason
                     )
-                    is BluetoothHidKeyboardManager.HidState.NeedsPermission -> StatusDisplayData(
-                        icon = Icons.Default.ErrorOutline,
-                        color = StatusWarning,
-                        title = "PERMISSIONS REQUIRED",
-                        subtitle = "Grant Bluetooth Nearby Devices permissions to connect to PC."
+                    is BluetoothHidKeyboardManager.HidState.NeedsPermission -> Triple(
+                        StatusWarning,
+                        "PERMISSIONS REQUIRED",
+                        "Grant Bluetooth Nearby Devices permissions to connect to PC."
                     )
-                    else -> StatusDisplayData(
-                        icon = Icons.Default.Bluetooth,
-                        color = TextSecondary,
-                        title = "INITIALIZING SERVICE...",
-                        subtitle = "Registering HID Keyboard App profile..."
+                    else -> Triple(
+                        TextSecondary,
+                        "INITIALIZING SERVICE...",
+                        "Registering HID Keyboard App profile..."
                     )
                 }
 
@@ -199,7 +253,7 @@ fun BluetoothKeyboardModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(6.dp))
-                        .background(statusInfo.color.copy(alpha = 0.12f))
+                        .background(statusColor.copy(alpha = 0.12f))
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -207,30 +261,29 @@ fun BluetoothKeyboardModal(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(CircleShape)
-                            .background(statusInfo.color)
+                            .background(statusColor)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = statusInfo.title,
+                            text = statusTitle,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
                                 letterSpacing = 0.5.sp
                             ),
-                            color = statusInfo.color
+                            color = statusColor
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = statusInfo.subtitle,
+                            text = statusSubtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = TextPrimary
                         )
                     }
                 }
 
-                // Context-specific actions
-                val context = LocalContext.current
+                // Dynamic Actions based on Bluetooth status
                 when (hidState) {
                     is BluetoothHidKeyboardManager.HidState.BluetoothDisabled -> {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -302,68 +355,171 @@ fun BluetoothKeyboardModal(
                             }
                         }
                     }
-                    is BluetoothHidKeyboardManager.HidState.RegisteringApp,
-                    is BluetoothHidKeyboardManager.HidState.Initializing -> {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                onEnableSimulation()
-                                onDismiss()
-                            },
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                        ) {
-                            Text(
-                                "Taking long? Switch to Preview / Simulation Mode",
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                    else -> {}
+                }
+
+                // Paired PC Devices Quick-Connect List
+                if (bondedHosts.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "PAIRED HOST DEVICES (TAP TO CONNECT)",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = TextMuted
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        bondedHosts.forEach { host ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(IdeSurfaceVariant.copy(alpha = 0.4f))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Laptop,
+                                        contentDescription = null,
+                                        tint = if (host.isConnected) StatusSuccess else IdeAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = host.name,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = host.address,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 9.sp
+                                            ),
+                                            color = TextMuted
+                                        )
+                                    }
+                                }
+
+                                if (host.isConnected) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(StatusSuccess.copy(alpha = 0.2f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "Connected",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    color = StatusSuccess,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp
+                                                )
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        OutlinedButton(
+                                            onClick = onDisconnectHost,
+                                            shape = RoundedCornerShape(4.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text("Disconnect", fontSize = 10.sp)
+                                        }
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onConnectToHost(host.address) },
+                                        shape = RoundedCornerShape(6.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = IdePrimary,
+                                            contentColor = TextPrimary
+                                        ),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Connect HID", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
                         }
                     }
-                    else -> {}
+                }
+
+                // Broadcast Discoverability Button
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                                putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
+                            }
+                            context.startActivity(discoverableIntent)
+                        } catch (_: Exception) {}
+                    },
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bluetooth,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Make Phone Discoverable on PC (120s)",
+                        style = MaterialTheme.typography.labelSmall
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Clean Instructions Section
+                // Guide Steps
                 Text(
-                    text = "PAIRING & USAGE GUIDE",
+                    text = "PAIRING INSTRUCTIONS",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.5.sp
                     ),
                     color = TextMuted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     InstructionStep(
                         step = "1",
-                        title = "Pair Device",
-                        description = "Open PC Bluetooth settings and connect to 'CodeFlow Studio Keyboard'."
+                        title = "Click '${deviceName}' on your PC",
+                        description = "In your PC's Bluetooth list (shown in your screenshot), click '${deviceName}' and tap 'Connect', OR tap 'Connect HID' above."
                     )
                     InstructionStep(
                         step = "2",
-                        title = "Open VS Code",
-                        description = "Open VS Code on your PC and focus the editor or file where code should appear."
+                        title = "Open VS Code / Notepad on PC",
+                        description = "Click into the editor window or text field where you want code typed."
                     )
                     InstructionStep(
                         step = "3",
-                        title = "Start Typing",
-                        description = "Tap below. A countdown gives you time to click into your PC window."
-                    )
-                    InstructionStep(
-                        step = "4",
-                        title = "Humanized Rhythm",
-                        description = "Types slowly like a human with natural timing variations and newline pauses."
+                        title = "Start Humanized Typing",
+                        description = "Tap 'Start Human Typing' below. The phone acts as a real USB/Bluetooth keyboard and streams code line-by-line."
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // Primary Start Button
                 Button(
@@ -394,12 +550,12 @@ fun BluetoothKeyboardModal(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Secondary Control Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = onEmergencyHalt,
@@ -407,14 +563,14 @@ fun BluetoothKeyboardModal(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusError),
                         modifier = Modifier
                             .weight(1f)
-                            .height(40.dp)
+                            .height(38.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Release Keys",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
@@ -427,15 +583,15 @@ fun BluetoothKeyboardModal(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                         modifier = Modifier
                             .weight(1f)
-                            .height(40.dp)
+                            .height(38.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Computer,
                             contentDescription = null,
                             tint = IdeAccent,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Preview Mode",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
@@ -459,16 +615,15 @@ private fun InstructionStep(
     ) {
         Box(
             modifier = Modifier
-                .size(20.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(IdePrimary.copy(alpha = 0.4f)),
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(IdeSurfaceVariant),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = step,
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp
                 ),
                 color = IdeAccent
@@ -483,17 +638,9 @@ private fun InstructionStep(
             )
             Text(
                 text = description,
-                style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary,
-                lineHeight = 15.sp
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                color = TextSecondary
             )
         }
     }
 }
-
-private data class StatusDisplayData(
-    val icon: ImageVector,
-    val color: Color,
-    val title: String,
-    val subtitle: String
-)
