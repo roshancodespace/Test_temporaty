@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -283,6 +284,74 @@ fun BluetoothKeyboardModal(
                     }
                     Spacer(modifier = Modifier.height(14.dp))
                 }
+
+                // Windows PC Pairing Tip Callout
+                Surface(
+                    color = IdeAccent.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, IdeAccent.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = IdeAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "PAIRING WITH WINDOWS PC",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = IdeAccent,
+                                    letterSpacing = 0.5.sp
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "If PC says 'Not Connectable': Go to Windows Settings -> Bluetooth -> 'Remove Device' (for your phone), then tap 'Make Discoverable (120s)' below and pair freshly as a Keyboard.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    val discoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                                        putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
+                                    }
+                                    context.startActivity(discoverableIntent)
+                                }
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Visibility,
+                                contentDescription = null,
+                                tint = IdeAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Make Phone Discoverable on PC (120s)",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = IdeAccent,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // ==================== SECTION 1: PAIRED PC / DEVICES ====================
                 Row(

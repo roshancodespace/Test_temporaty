@@ -145,6 +145,24 @@ class BluetoothHidKeyboardManager(
                         }
                     }
                 }
+                BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
+                    val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    if (state == BluetoothDevice.BOND_BONDED && device != null) {
+                        _isSimulationEnabled.value = false
+                        connectedHostDevice = device
+                        runCatching { hidDevice?.connect(device) }
+                        _hidState.value = HidState.Connected(
+                            deviceName = runCatching { device.name }.getOrNull() ?: device.address,
+                            deviceAddress = device.address
+                        )
+                    }
+                }
             }
         }
     }
@@ -260,6 +278,7 @@ class BluetoothHidKeyboardManager(
                 addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                 addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+                addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
             }
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -495,6 +514,21 @@ class BluetoothHidKeyboardManager(
                 )
             }
             initiated
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun pairDevice(deviceAddress: String): Boolean {
+        _isSimulationEnabled.value = false
+        val device = bluetoothAdapter?.getRemoteDevice(deviceAddress) ?: return false
+        return try {
+            if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                connectToHost(deviceAddress)
+            } else {
+                device.createBond()
+            }
         } catch (_: Exception) {
             false
         }
