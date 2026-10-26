@@ -17,14 +17,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -64,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluetooth.BluetoothHidKeyboardManager
@@ -304,48 +308,70 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                 // Primary Expressive Action Bar (3 Flat Pills)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Button(
                         onClick = { viewModel.startBluetoothTypingIntoPc() },
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = IdeAccent, contentColor = Color.Black),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .weight(1.3f)
-                            .height(44.dp)
+                            .weight(1f)
+                            .height(42.dp)
                             .testTag("primary_typing_button")
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Type to PC", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            "Type",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     Button(
                         onClick = { showAutomationModal = true },
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .weight(1.2f)
-                            .height(44.dp)
+                            .weight(1f)
+                            .height(42.dp)
                             .testTag("automate_vs_code_button")
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Automate", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            "Automate",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     OutlinedButton(
                         onClick = { showScreenMirrorModal = true },
                         shape = RoundedCornerShape(8.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorderSubtle),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(42.dp)
                             .testTag("screen_mirror_button")
                     ) {
-                        Icon(Icons.Default.DesktopWindows, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Mirror", fontWeight = FontWeight.Medium, fontSize = 11.5.sp, color = TextPrimary)
+                        Icon(Icons.Default.DesktopWindows, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            "Mirror",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.5.sp,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
@@ -386,7 +412,8 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     onClearLogs = { viewModel.clearLogs() }
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
         }
     }

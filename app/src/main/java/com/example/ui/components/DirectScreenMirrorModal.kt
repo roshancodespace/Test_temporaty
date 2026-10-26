@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -69,10 +70,11 @@ fun DirectScreenMirrorModal(
     val statusText by mirrorServer.connectedClientStatus.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
+    val httpsUrl = "https://$serverIp:8443"
     val serverUrl = "http://$serverIp:8080"
 
     DisposableEffect(Unit) {
-        mirrorServer.startServer(8080)
+        mirrorServer.startServer(httpPort = 8080, httpsPort = 8443)
         onDispose {
             mirrorServer.stopServer()
         }
@@ -85,7 +87,8 @@ fun DirectScreenMirrorModal(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .navigationBarsPadding()
+                .padding(vertical = 12.dp, horizontal = 12.dp),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
@@ -116,8 +119,8 @@ fun DirectScreenMirrorModal(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Zero-Camera HD Screen Mirroring over Wi-Fi",
-                                fontSize = 12.sp,
+                                text = "HTTPS Live getDisplayMedia (:8443) + HTTP Setup (:8080)",
+                                fontSize = 11.5.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -135,7 +138,7 @@ fun DirectScreenMirrorModal(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Server Connection Banner Box
                 Card(
@@ -146,7 +149,7 @@ fun DirectScreenMirrorModal(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -160,22 +163,28 @@ fun DirectScreenMirrorModal(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "Open on PC Browser:",
+                                    text = "Live Screen Share (HTTPS Secure Context):",
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                                 )
                                 Text(
-                                    text = serverUrl,
-                                    fontSize = 15.sp,
+                                    text = httpsUrl,
+                                    fontSize = 14.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Setup / Cert / Flag Guide: $serverUrl",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                                 )
                             }
                         }
 
                         IconButton(
-                            onClick = { clipboardManager.setText(AnnotatedString(serverUrl)) },
+                            onClick = { clipboardManager.setText(AnnotatedString(httpsUrl)) },
                             modifier = Modifier.testTag("copy_mirror_url_button")
                         ) {
                             Icon(
@@ -227,7 +236,7 @@ fun DirectScreenMirrorModal(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "1. Open $serverUrl in PC Browser\n2. Click 'Share PC Screen Now'\n3. Select VS Code window or monitor",
+                                text = "1. Open $httpsUrl on PC (accept local TLS prompt or install cert from $serverUrl)\n2. Click 'Share PC Screen Live (getDisplayMedia)'\n3. Select your VS Code window or monitor",
                                 color = Color.LightGray,
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center

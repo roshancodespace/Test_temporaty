@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,6 +78,8 @@ fun GitHubImportModal(
             modifier = Modifier
                 .widthIn(min = 320.dp, max = 500.dp)
                 .fillMaxWidth(0.92f)
+                .navigationBarsPadding()
+                .padding(vertical = 12.dp)
                 .testTag("github_import_modal"),
             shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(containerColor = IdeSurface)

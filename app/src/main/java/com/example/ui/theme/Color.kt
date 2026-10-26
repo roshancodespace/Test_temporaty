@@ -24,8 +24,28 @@ data class IdeColorPalette(
     val isDark: Boolean = true
 )
 
-// 1. VS Code Dark+ (Default)
-val VsCodeDarkPalette = IdeColorPalette(
+// 1. VS Code Dark Modern (Newer obsidian flat grey with electric blue)
+val VsCodeDarkModernPalette = IdeColorPalette(
+    background = Color(0xFF181818),
+    sidebar = Color(0xFF1F1F1F),
+    surface = Color(0xFF1F1F1F),
+    surfaceVariant = Color(0xFF2B2B2B),
+    border = Color(0xFF333333),
+    borderSubtle = Color(0xFF252525),
+    primary = Color(0xFF0078D4),
+    accent = Color(0xFF29B6F6),
+    secondary = Color(0xFF38BDF8),
+    textPrimary = Color(0xFFCCCCCC),
+    textSecondary = Color(0xFF999999),
+    textMuted = Color(0xFF6E6E6E),
+    statusSuccess = Color(0xFF4CAF50),
+    statusWarning = Color(0xFFFFB74D),
+    statusError = Color(0xFFF44336),
+    isDark = true
+)
+
+// 2. VS Code Dark Classic (Classic dark purple-slate tint with cyan)
+val VsCodeDarkClassicPalette = IdeColorPalette(
     background = Color(0xFF1E1E1E),
     sidebar = Color(0xFF252526),
     surface = Color(0xFF252526),
@@ -44,7 +64,27 @@ val VsCodeDarkPalette = IdeColorPalette(
     isDark = true
 )
 
-// 2. VS Code / GitHub Clean Light
+// 3. GitHub Dark Modern (Deep slate blue dark theme)
+val GitHubDarkPalette = IdeColorPalette(
+    background = Color(0xFF0D1117),
+    sidebar = Color(0xFF161B22),
+    surface = Color(0xFF161B22),
+    surfaceVariant = Color(0xFF21262D),
+    border = Color(0xFF30363D),
+    borderSubtle = Color(0xFF21262D),
+    primary = Color(0xFF238636),
+    accent = Color(0xFF2F81F7),
+    secondary = Color(0xFF58A6FF),
+    textPrimary = Color(0xFFC9D1D9),
+    textSecondary = Color(0xFF8B949E),
+    textMuted = Color(0xFF484F58),
+    statusSuccess = Color(0xFF3FB950),
+    statusWarning = Color(0xFFD29922),
+    statusError = Color(0xFFF85149),
+    isDark = true
+)
+
+// 4. VS Code / GitHub Clean Light
 val VsCodeLightPalette = IdeColorPalette(
     background = Color(0xFFF6F8FA),
     sidebar = Color(0xFFFFFFFF),
@@ -106,7 +146,7 @@ val MonokaiDarkPalette = IdeColorPalette(
 )
 
 // Ambient CompositionLocal
-val LocalIdeColors = staticCompositionLocalOf { VsCodeDarkPalette }
+val LocalIdeColors = staticCompositionLocalOf { VsCodeDarkModernPalette }
 
 // Seamless dynamic color accessors for Compose
 val IdeBackground: Color @Composable get() = LocalIdeColors.current.background

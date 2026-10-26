@@ -17,10 +17,17 @@ enum class ThemeMode(val label: String) {
 }
 
 enum class PalettePreset(val label: String) {
-    VS_CODE("VS Code Classic"),
-    GITHUB("GitHub Modern"),
+    VS_CODE_MODERN("VS Code Dark Modern"),
+    VS_CODE_CLASSIC("VS Code Dark Classic"),
+    GITHUB_DARK("GitHub Dark Modern"),
     MIDNIGHT("Midnight Studio"),
-    MONOKAI("Monokai Ember")
+    MONOKAI("Monokai Ember");
+
+    companion object {
+        // Fallback backward compatibility for legacy enum values if persisted
+        val VS_CODE = VS_CODE_MODERN
+        val GITHUB = GITHUB_DARK
+    }
 }
 
 val IdeShapes = Shapes(
@@ -34,7 +41,7 @@ val IdeShapes = Shapes(
 @Composable
 fun CodeFlowTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    palettePreset: PalettePreset = PalettePreset.VS_CODE,
+    palettePreset: PalettePreset = PalettePreset.VS_CODE_MODERN,
     content: @Composable () -> Unit
 ) {
     val systemInDark = isSystemInDarkTheme()
@@ -46,8 +53,9 @@ fun CodeFlowTheme(
 
     val idePalette = if (isDark) {
         when (palettePreset) {
-            PalettePreset.VS_CODE -> VsCodeDarkPalette
-            PalettePreset.GITHUB -> VsCodeDarkPalette
+            PalettePreset.VS_CODE_MODERN -> VsCodeDarkModernPalette
+            PalettePreset.VS_CODE_CLASSIC -> VsCodeDarkClassicPalette
+            PalettePreset.GITHUB_DARK -> GitHubDarkPalette
             PalettePreset.MIDNIGHT -> MidnightDarkPalette
             PalettePreset.MONOKAI -> MonokaiDarkPalette
         }

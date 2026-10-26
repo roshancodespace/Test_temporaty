@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -117,6 +118,8 @@ fun SettingsModal(
             modifier = Modifier
                 .widthIn(min = 320.dp, max = 520.dp)
                 .fillMaxWidth(0.92f)
+                .navigationBarsPadding()
+                .padding(vertical = 12.dp)
                 .testTag("settings_modal"),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = IdeSurface)
@@ -272,8 +275,9 @@ fun SettingsModal(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val palettes = listOf(
-                        Triple(PalettePreset.VS_CODE, "VS Code Classic", Color(0xFF00E5FF)),
-                        Triple(PalettePreset.GITHUB, "GitHub Modern", Color(0xFF0969DA)),
+                        Triple(PalettePreset.VS_CODE_MODERN, "VS Code Dark Modern", Color(0xFF29B6F6)),
+                        Triple(PalettePreset.VS_CODE_CLASSIC, "VS Code Dark Classic", Color(0xFF00E5FF)),
+                        Triple(PalettePreset.GITHUB_DARK, "GitHub Dark Modern", Color(0xFF2F81F7)),
                         Triple(PalettePreset.MIDNIGHT, "Midnight Studio", Color(0xFFB388FF)),
                         Triple(PalettePreset.MONOKAI, "Monokai Ember", Color(0xFFFFD54F))
                     )

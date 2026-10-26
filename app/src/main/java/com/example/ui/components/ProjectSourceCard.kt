@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -296,55 +297,66 @@ fun ProjectSourceCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = {
-                    Text(
-                        text = "Filter files...",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                        color = TextMuted
-                    )
-                },
-                leadingIcon = {
+            // Search Bar with zero text clipping
+            Surface(
+                color = IdeSurfaceVariant.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorderSubtle),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = null,
+                        contentDescription = "Search",
                         tint = TextMuted,
                         modifier = Modifier.size(16.dp)
                     )
-                },
-                trailingIcon = {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Filter files by name or extension...",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 12.sp,
+                                color = TextPrimary
+                            ),
+                            singleLine = true,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(IdeAccent),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("file_search_input")
+                        )
+                    }
                     if (searchQuery.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(6.dp))
                         IconButton(
                             onClick = { searchQuery = "" },
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(20.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Clear,
-                                contentDescription = "Clear",
+                                contentDescription = "Clear search",
                                 tint = TextMuted,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
                     }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(6.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = IdeAccent,
-                    unfocusedBorderColor = IdeBorderSubtle,
-                    focusedContainerColor = IdeSurfaceVariant.copy(alpha = 0.2f),
-                    unfocusedContainerColor = IdeSurfaceVariant.copy(alpha = 0.1f),
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .testTag("file_search_input")
-            )
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -434,22 +446,25 @@ private fun QuickActionChip(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (isActive) IdeAccent.copy(alpha = 0.18f) else IdeSurfaceVariant.copy(alpha = 0.5f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (isActive) IdeAccent.copy(alpha = 0.18f) else IdeSurfaceVariant.copy(alpha = 0.4f),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (isActive) IdeAccent.copy(alpha = 0.6f) else IdeBorderSubtle
+        )
     ) {
         Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (isActive) IdeAccent else TextSecondary,
-                modifier = Modifier.size(12.dp)
+                modifier = Modifier.size(13.dp)
             )
             Text(
                 text = label,
@@ -615,9 +630,9 @@ private fun MinimalTreeNodeItem(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(fileColor.copy(alpha = 0.15f))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                        .clip(CircleShape)
+                        .background(fileColor.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = extLabel,
