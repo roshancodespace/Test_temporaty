@@ -56,14 +56,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.bluetooth.HumanTypingSimulator
 import com.example.ui.CodeFlowViewModel
+import com.example.ui.components.AutomationCenterModal
 import com.example.ui.components.BluetoothHostBar
 import com.example.ui.components.BluetoothKeyboardModal
 import com.example.ui.components.ConsoleLogCard
+import com.example.ui.components.DirectScreenMirrorModal
 import com.example.ui.components.GitHubImportModal
 import com.example.ui.components.ImportProgressModal
 import com.example.ui.components.ProjectSourceCard
+import com.example.ui.components.ScreenScoutCameraModal
 import com.example.ui.components.SettingsModal
 import com.example.ui.components.TypingControlCard
 import com.example.ui.theme.CodeFlowTheme
@@ -127,6 +131,8 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     var showSettingsModal by remember { mutableStateOf(false) }
     var showGitHubImportModal by remember { mutableStateOf(false) }
     var showBluetoothModal by remember { mutableStateOf(false) }
+    var showAutomationModal by remember { mutableStateOf(false) }
+    var showScreenScoutModal by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -256,6 +262,66 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() }
                 )
 
+                // Section 1.5: VS Code Automation & Screen Scout Hero Banner
+                val targetOsState by viewModel.targetOs.collectAsState()
+                Surface(
+                    color = IdeSurface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = androidx.compose.material.icons.Icons.Default.Keyboard,
+                                    contentDescription = null,
+                                    tint = IdeAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "VS Code Automation & OS Recon",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Active Shell: ${targetOsState.label}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                androidx.compose.material3.OutlinedButton(
+                                    onClick = { showScreenScoutModal = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("stream_pc_screen_button")
+                                ) {
+                                    Text("Stream Screen", fontSize = 11.5.sp, color = TextPrimary)
+                                }
+
+                                androidx.compose.material3.Button(
+                                    onClick = { showAutomationModal = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = IdeAccent, contentColor = androidx.compose.ui.graphics.Color.Black),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("open_automation_modal_button")
+                                ) {
+                                    Text("Automate VS Code", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Section 2: Typing Control Card (Start, Checkpoint Resume, Progress, Cadence)
                 TypingControlCard(
                     typingState = typingState,
@@ -360,6 +426,26 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
             onClearCheckpoint = { viewModel.clearCheckpoint() },
             onResetDefaults = { viewModel.updateTypingCadence(28, 120L, true, 3) },
             onDismiss = { showSettingsModal = false }
+        )
+    }
+
+    // VS Code Automation & OS Strategy Center Modal
+    if (showAutomationModal) {
+        AutomationCenterModal(
+            viewModel = viewModel,
+            onDismiss = { showAutomationModal = false },
+            onOpenScreenScout = {
+                showAutomationModal = false
+                showScreenScoutModal = true
+            }
+        )
+    }
+
+    // Direct Digital PC Screen Stream Mirror Modal (Zero Camera)
+    if (showScreenScoutModal) {
+        DirectScreenMirrorModal(
+            viewModel = viewModel,
+            onDismiss = { showScreenScoutModal = false }
         )
     }
 }

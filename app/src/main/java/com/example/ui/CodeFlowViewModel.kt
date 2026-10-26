@@ -63,6 +63,18 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
     val humanTypingSimulator = getTypingSimulator(application)
     val typingState: StateFlow<HumanTypingSimulator.TypingState> = humanTypingSimulator.typingState
 
+    // VS Code Workspace Orchestrator & Target OS Automation Engine
+    val targetWorkspaceOrchestrator = com.example.automation.TargetWorkspaceOrchestrator(
+        keyboardManager = bluetoothHidManager,
+        typingSimulator = humanTypingSimulator,
+        scope = processScope
+    )
+    val orchestratorState = targetWorkspaceOrchestrator.orchestratorState
+    val pluginRegistry = targetWorkspaceOrchestrator.pluginRegistry
+
+    private val _targetOs = MutableStateFlow(com.example.automation.TargetOS.WINDOWS_POWERSHELL)
+    val targetOs: StateFlow<com.example.automation.TargetOS> = _targetOs.asStateFlow()
+
     private val _currentProject = MutableStateFlow<Project?>(null)
     val currentProject: StateFlow<Project?> = _currentProject.asStateFlow()
 
@@ -736,7 +748,53 @@ class CodeFlowViewModel(application: Application) : AndroidViewModel(application
         _importStatusMessage.value = null
     }
 
+    fun setTargetOs(os: com.example.automation.TargetOS) {
+        _targetOs.value = os
+        targetWorkspaceOrchestrator.targetOs = os
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = "Target OS shell profile set to: ${os.label}"
+        ))
+    }
+
+    fun toggleVimPlugin(enabled: Boolean) {
+        pluginRegistry.isVimPluginEnabled = enabled
+        addLog(LogEntry(
+            level = LogLevel.INFO,
+            message = if (enabled) "Vim Plugin enabled ('i' for insert, 'Esc :w' for save)." else "Vim Plugin disabled."
+        ))
+    }
+
+    fun startOrchestratedWorkspaceBuild() {
+        val payloads = buildIncludedPayloads()
+        if (payloads.isEmpty()) {
+            addLog(LogEntry(level = LogLevel.WARN, message = "Orchestration failed: No files are marked as included."))
+            return
+        }
+
+        KeystrokeForegroundService.start(getApplication(), "Orchestrating ${payloads.size} files into VS Code")
+        targetWorkspaceOrchestrator.startOrchestratedBuild(
+            files = payloads,
+            onLog = { addLog(it) }
+        )
+    }
+
+    fun startTerminalScriptBootstrap() {
+        val payloads = buildIncludedPayloads()
+        if (payloads.isEmpty()) {
+            addLog(LogEntry(level = LogLevel.WARN, message = "Script bootstrap failed: No files included."))
+            return
+        }
+
+        KeystrokeForegroundService.start(getApplication(), "Terminal Bootstrap Script")
+        targetWorkspaceOrchestrator.startTerminalScriptBootstrap(
+            files = payloads,
+            onLog = { addLog(it) }
+        )
+    }
+
     fun resetToSampleProject() {
+        targetWorkspaceOrchestrator.stop(onLog = { addLog(it) })
         humanTypingSimulator.stop(onLog = { addLog(it) })
         clearCheckpoint()
         loadDefaultSampleProject()
