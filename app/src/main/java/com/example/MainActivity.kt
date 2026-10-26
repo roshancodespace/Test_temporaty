@@ -11,7 +11,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,16 +28,22 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -52,29 +60,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.bluetooth.BluetoothHidKeyboardManager
 import com.example.bluetooth.HumanTypingSimulator
 import com.example.ui.CodeFlowViewModel
 import com.example.ui.components.AutomationCenterModal
-import com.example.ui.components.BluetoothHostBar
 import com.example.ui.components.BluetoothKeyboardModal
 import com.example.ui.components.ConsoleLogCard
 import com.example.ui.components.DirectScreenMirrorModal
 import com.example.ui.components.GitHubImportModal
 import com.example.ui.components.ImportProgressModal
 import com.example.ui.components.ProjectSourceCard
-import com.example.ui.components.ScreenScoutCameraModal
 import com.example.ui.components.SettingsModal
 import com.example.ui.components.TypingControlCard
 import com.example.ui.theme.CodeFlowTheme
 import com.example.ui.theme.IdeAccent
 import com.example.ui.theme.IdeBackground
-import com.example.ui.theme.IdeBorder
+import com.example.ui.theme.IdeBorderSubtle
 import com.example.ui.theme.IdeSurface
+import com.example.ui.theme.StatusSuccess
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
@@ -132,7 +141,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
     var showGitHubImportModal by remember { mutableStateOf(false) }
     var showBluetoothModal by remember { mutableStateOf(false) }
     var showAutomationModal by remember { mutableStateOf(false) }
-    var showScreenScoutModal by remember { mutableStateOf(false) }
+    var showScreenMirrorModal by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -149,7 +158,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         }
     }
 
-    // Bluetooth Runtime Permission Request for Android 12+ & Notification for Android 13+
+    // Bluetooth Permissions
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
@@ -171,7 +180,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         }
     }
 
-    // SAF File Picker for local ZIP projects
+    // SAF ZIP Picker
     val zipPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -195,134 +204,152 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Top App Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Flat Material 3 Expressive Header Bar
+                Surface(
+                    color = IdeSurface.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorderSubtle),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(IdeAccent.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Keyboard,
-                                contentDescription = null,
-                                tint = IdeAccent,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(IdeAccent.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Keyboard,
+                                    contentDescription = null,
+                                    tint = IdeAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "CodeFlow Studio",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                text = "CodeFlow",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
                                 color = TextPrimary
                             )
-                            Text(
-                                text = "Bluetooth PC Keystroke Remote",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
                         }
-                    }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Active Bluetooth Host Pill
+                        val currentHidState = hidState
+                        val (btLabel, btColor) = when (currentHidState) {
+                            is BluetoothHidKeyboardManager.HidState.Connected -> Pair(
+                                currentHidState.deviceName.ifBlank { "PC Connected" },
+                                StatusSuccess
+                            )
+                            is BluetoothHidKeyboardManager.HidState.WaitingForHost -> Pair("Ready to Pair", IdeAccent)
+                            else -> Pair("Offline", TextSecondary)
+                        }
+
+                        Surface(
+                            color = btColor.copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.clickable { showBluetoothModal = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(btColor)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = btLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = btColor
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
                         IconButton(
                             onClick = { showSettingsModal = true },
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(32.dp)
                                 .testTag("open_settings_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = "Settings",
                                 tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
 
-                // Section 1: Bluetooth Host Status Bar
-                BluetoothHostBar(
-                    hidState = hidState,
-                    onOpenPairingGuide = { showBluetoothModal = true },
-                    onTestKeystroke = { viewModel.testSampleKeystroke() },
-                    onEmergencyRelease = { viewModel.bluetoothHidManager.emergencyReleaseAllKeys() },
-                    onEnableSimulation = { viewModel.bluetoothHidManager.enableSimulationMode() }
-                )
-
-                // Section 1.5: VS Code Automation & Screen Scout Hero Banner
-                val targetOsState by viewModel.targetOs.collectAsState()
-                Surface(
-                    color = IdeSurface,
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorder),
-                    modifier = Modifier.fillMaxWidth()
+                // Primary Expressive Action Bar (3 Flat Pills)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Default.Keyboard,
-                                    contentDescription = null,
-                                    tint = IdeAccent,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = "VS Code Automation & OS Recon",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "Active Shell: ${targetOsState.label}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                            }
+                    Button(
+                        onClick = { viewModel.startBluetoothTypingIntoPc() },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = IdeAccent, contentColor = Color.Black),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(44.dp)
+                            .testTag("primary_typing_button")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Type to PC", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                androidx.compose.material3.OutlinedButton(
-                                    onClick = { showScreenScoutModal = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                    modifier = Modifier.testTag("stream_pc_screen_button")
-                                ) {
-                                    Text("Stream Screen", fontSize = 11.5.sp, color = TextPrimary)
-                                }
+                    Button(
+                        onClick = { showAutomationModal = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(44.dp)
+                            .testTag("automate_vs_code_button")
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Automate", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
 
-                                androidx.compose.material3.Button(
-                                    onClick = { showAutomationModal = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = IdeAccent, contentColor = androidx.compose.ui.graphics.Color.Black),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                    modifier = Modifier.testTag("open_automation_modal_button")
-                                ) {
-                                    Text("Automate VS Code", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                    OutlinedButton(
+                        onClick = { showScreenMirrorModal = true },
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, IdeBorderSubtle),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .testTag("screen_mirror_button")
+                    ) {
+                        Icon(Icons.Default.DesktopWindows, contentDescription = null, tint = TextPrimary, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Mirror", fontWeight = FontWeight.Medium, fontSize = 11.5.sp, color = TextPrimary)
                     }
                 }
 
-                // Section 2: Typing Control Card (Start, Checkpoint Resume, Progress, Cadence)
+                // Section 2: Typing Progress / Checkpoint Bar
                 TypingControlCard(
                     typingState = typingState,
                     speedCps = typingCps,
@@ -337,7 +364,7 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     onOpenCadenceSettings = { showSettingsModal = true }
                 )
 
-                // Section 3: Project Source & File Selection Card (Android-friendly M3 layout)
+                // Section 3: Redesigned Minimal File Tree Card
                 ProjectSourceCard(
                     project = currentProject,
                     fileTree = fileTree,
@@ -353,24 +380,22 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
                     onResetSample = { viewModel.resetToSampleProject() }
                 )
 
-                // Section 4: Live Telemetry & Event Log Card
+                // Section 4: Collapsible Console Telemetry Strip
                 ConsoleLogCard(
                     logs = eventLogs,
                     onClearLogs = { viewModel.clearLogs() }
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
 
-    // Dedicated GitHub & ZIP Extraction Progress Modal (replaces snackbar spam)
     ImportProgressModal(
         progress = importProgress,
         onDismiss = { viewModel.dismissImportProgress() }
     )
 
-    // GitHub Repo Import Modal
     if (showGitHubImportModal) {
         GitHubImportModal(
             onImportRepo = { url, branch -> viewModel.importGitHubRepo(url, branch) },
@@ -378,7 +403,6 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         )
     }
 
-    // Bluetooth PC Keyboard Pairing Guide Modal
     if (showBluetoothModal) {
         val pairedHosts = remember(showBluetoothModal, hidState) { viewModel.bluetoothHidManager.getBondedHosts() }
         BluetoothKeyboardModal(
@@ -400,7 +424,6 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         )
     }
 
-    // Comprehensive Settings Modal: Cadence, Themes & Appearance, Screen Awake, Bluetooth Spoofing, Persistence Memory
     if (showSettingsModal) {
         SettingsModal(
             cps = typingCps,
@@ -429,23 +452,21 @@ fun MainScreen(viewModel: CodeFlowViewModel) {
         )
     }
 
-    // VS Code Automation & OS Strategy Center Modal
     if (showAutomationModal) {
         AutomationCenterModal(
             viewModel = viewModel,
             onDismiss = { showAutomationModal = false },
             onOpenScreenScout = {
                 showAutomationModal = false
-                showScreenScoutModal = true
+                showScreenMirrorModal = true
             }
         )
     }
 
-    // Direct Digital PC Screen Stream Mirror Modal (Zero Camera)
-    if (showScreenScoutModal) {
+    if (showScreenMirrorModal) {
         DirectScreenMirrorModal(
             viewModel = viewModel,
-            onDismiss = { showScreenScoutModal = false }
+            onDismiss = { showScreenMirrorModal = false }
         )
     }
 }

@@ -145,6 +145,22 @@ class BluetoothHidKeyboardManager(
                         }
                     }
                 }
+                BluetoothDevice.ACTION_PAIRING_REQUEST -> {
+                    val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    }
+                    val variant = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, BluetoothDevice.ERROR)
+                    if (device != null) {
+                        _isSimulationEnabled.value = false
+                        connectedHostDevice = device
+                            if (variant == BluetoothDevice.PAIRING_VARIANT_PASSKEY_CONFIRMATION || variant == 3) {
+                                device.setPairingConfirmation(true)
+                            }
+                    }
+                }
                 BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
                     val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -278,6 +294,7 @@ class BluetoothHidKeyboardManager(
                 addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                 addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+                addAction(BluetoothDevice.ACTION_PAIRING_REQUEST)
                 addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
             }
             try {
